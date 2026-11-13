@@ -1,4 +1,7 @@
-/* Probabilidad conjunta de varias patas con correlación (cópula gaussiana, Monte Carlo con semilla fija).
+/* Probabilidad conjunta de varias patas con correlación (cópula gaussiana).
+   La matriz de correlación es diagonal por bloques (partidos distintos = independientes), así que
+   P(todas) = Π P(bloque de cada partido). Bloque de 1 pata: p. Bloque de 2: normal bivariada exacta (Genz).
+   Bloque de 3 o más: Monte Carlo con semilla fija solo sobre ese bloque. Resultados memorizados.
    Se usa tanto en el navegador (window.Correlacion) como en Node para pruebas (module.exports). */
 (function (root) {
   'use strict';
@@ -23,6 +26,55 @@
     return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q / (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1);
   }
 
+  // Φ(x) con erfc de Numerical Recipes (error relativo < 1,2e-7)
+  function phi(x) {
+    var z = Math.abs(x) / Math.SQRT2, t = 1 / (1 + 0.5 * z);
+    var r = t * Math.exp(-z * z - 1.26551223 + t * (1.00002368 + t * (0.37409196 + t * (0.09678418 + t * (-0.18628806 + t * (0.27886807 + t * (-1.13520398 + t * (1.48851587 + t * (-0.82215223 + t * 0.17087277)))))))));
+    return x >= 0 ? 1 - r / 2 : r / 2;
+  }
+
+  // P(X > dh, Y > dk) para normales estándar con correlación r (Genz 2004, «bvnu»).
+  var GL = [
+    { w: [0.1713244923791705, 0.3607615730481384, 0.4679139345726904], x: [0.9324695142031522, 0.6612093864662647, 0.2386191860831970] },
+    { w: [0.04717533638651177, 0.1069393259953183, 0.1600783285433464, 0.2031674267230659, 0.2334925365383547, 0.2491470458134029],
+      x: [0.9815606342467191, 0.9041172563704750, 0.7699026741943050, 0.5873179542866171, 0.3678314989981802, 0.1252334085114692] },
+    { w: [0.01761400713915212, 0.04060142980038694, 0.06267204833410906, 0.08327674157670475, 0.1019301198172404, 0.1181945319615184, 0.1316886384491766, 0.1420961093183821, 0.1491729864726037, 0.1527533871307259],
+      x: [0.9931285991850949, 0.9639719272779138, 0.9122344282513259, 0.8391169718222188, 0.7463319064601508, 0.6360536807265150, 0.5108670019508271, 0.3737060887154196, 0.2277858511416451, 0.07652652113349733] }
+  ];
+  function bvnu(dh, dk, r) {
+    if (r === 0) return phi(-dh) * phi(-dk);
+    var tp = 2 * Math.PI, h = dh, k = dk, hk = h * k, bvn = 0, ar = Math.abs(r);
+    var g = ar < 0.3 ? GL[0] : ar < 0.75 ? GL[1] : GL[2], n = g.w.length, i, s, xi;
+    if (ar < 0.925) {
+      var hs = (h * h + k * k) / 2, asr = Math.asin(r) / 2;
+      for (i = 0; i < n; i++) for (s = -1; s <= 1; s += 2) {
+        var sn = Math.sin(asr * (1 + s * g.x[i]));
+        bvn += g.w[i] * Math.exp((sn * hk - hs) / (1 - sn * sn));
+      }
+      return Math.max(0, Math.min(1, bvn * asr / tp + phi(-h) * phi(-k)));
+    }
+    if (r < 0) { k = -k; hk = -hk; }
+    if (ar < 1) {
+      var as = 1 - r * r, a = Math.sqrt(as), bs = (h - k) * (h - k), c = (4 - hk) / 8, d = (12 - hk) / 80, asr2 = -(bs / as + hk) / 2;
+      if (asr2 > -100) bvn = a * Math.exp(asr2) * (1 - c * (bs - as) * (1 - d * bs) / 3 + c * d * as * as);
+      if (hk > -100) { var b = Math.sqrt(bs), sp = Math.sqrt(tp) * phi(-b / a); bvn -= Math.exp(-hk / 2) * sp * b * (1 - c * bs * (1 - d * bs) / 3); }
+      a /= 2;
+      var acc = 0;
+      for (i = 0; i < n; i++) for (s = -1; s <= 1; s += 2) {
+        xi = a * (1 + s * g.x[i]); var xs = xi * xi, as3 = -(bs / xs + hk) / 2;
+        if (as3 > -100) {
+          var sp2 = 1 + c * xs * (1 + 5 * d * xs), rs = Math.sqrt(1 - xs), ep = Math.exp(-(hk / 2) * xs / ((1 + rs) * (1 + rs))) / rs;
+          acc += g.w[i] * Math.exp(as3) * (sp2 - ep);
+        }
+      }
+      bvn = (a * acc - bvn) / tp;
+    }
+    if (r > 0) bvn += phi(-Math.max(h, k));
+    else if (h >= k) bvn = -bvn;
+    else bvn = (h < 0 ? phi(k) - phi(h) : phi(-h) - phi(-k)) - bvn;
+    return Math.max(0, Math.min(1, bvn));
+  }
+
   function mulberry32(seed) {
     return function () {
       seed |= 0; seed = seed + 0x6D2B79F5 | 0;
@@ -30,13 +82,6 @@
       t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
       return ((t ^ t >>> 14) >>> 0) / 4294967296;
     };
-  }
-
-  function gauss(rnd) {
-    var u = 0, v = 0;
-    while (u === 0) u = rnd();
-    v = rnd();
-    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
   }
 
   /* Correlación entre dos patas {id, eq, gid, m, lado}. Devuelve un número en (-1, 1). */
@@ -66,35 +111,74 @@
     return L;
   }
 
-  /* patas: [{id, eq, gid, m, lado, p}] -> {indep, conj, rhoMax} */
+  /* Monte Carlo de un bloque correlacionado: normales generadas solo cuando hacen falta
+     (la mayoría de las muestras falla en las primeras patas) y Box-Muller aprovechando el seno y el coseno. */
+  function monteCarlo(R, umbral, N) {
+    var n = R.length, L = cholesky(R), f = 1, i, j;
+    while (!L && f > 0.05) { f *= 0.8; for (i = 0; i < n; i++) for (j = 0; j < n; j++) if (i !== j) R[i][j] *= 0.8; L = cholesky(R); }
+    if (!L) return null;
+    var rnd = mulberry32(20261113), ok = 0, e = new Float64Array(n), extra = NaN, z, k, s, u, v, m;
+    var gauss = function () {
+      if (extra === extra) { var y = extra; extra = NaN; return y; }
+      do { u = rnd(); } while (u === 0);
+      v = 2 * Math.PI * rnd(); m = Math.sqrt(-2 * Math.log(u));
+      extra = m * Math.sin(v); return m * Math.cos(v);
+    };
+    for (s = 0; s < N; s++) {
+      for (i = 0; i < n; i++) {
+        e[i] = gauss();
+        z = 0; for (k = 0; k <= i; k++) z += L[i][k] * e[k];
+        if (z > umbral[i]) break;
+      }
+      if (i === n) ok++;
+    }
+    return ok / N;
+  }
+
+  var memo = new Map();
+
+  /* patas: [{id, eq, gid, m, lado, p}] -> {indep, conj, correlacionadas} */
   function conjunta(patas, muestras) {
     var n = patas.length, indep = 1, i, j;
     patas.forEach(function (x) { indep *= x.p; });
     if (n < 2) return { indep: indep, conj: indep, correlacionadas: 0 };
-    var R = [], corr = 0;
-    for (i = 0; i < n; i++) { R.push(new Array(n).fill(0)); R[i][i] = 1; }
+    var N = muestras || 30000;
+    var clave = N + '#' + patas.map(function (x) { return x.id + '|' + x.gid + '|' + x.m + '|' + x.lado + '|' + x.p; }).join(';');
+    var hit = memo.get(clave);
+    if (hit) return { indep: hit.indep, conj: hit.conj, correlacionadas: hit.correlacionadas };
+
+    // bloques conectados por correlación no nula (en la práctica, uno por partido)
+    var corr = 0, padre = patas.map(function (_, k) { return k; });
+    var raiz = function (k) { while (padre[k] !== k) k = padre[k] = padre[padre[k]]; return k; };
+    var Rfull = [];
+    for (i = 0; i < n; i++) Rfull.push(new Array(n).fill(0));
     for (i = 0; i < n; i++) for (j = i + 1; j < n; j++) {
-      R[i][j] = R[j][i] = rho(patas[i], patas[j]);
-      if (R[i][j] !== 0) corr++;
+      var r = rho(patas[i], patas[j]);
+      if (r !== 0) { Rfull[i][j] = Rfull[j][i] = r; corr++; padre[raiz(i)] = raiz(j); }
     }
-    if (!corr) return { indep: indep, conj: indep, correlacionadas: 0 };
-    var L = cholesky(R), f = 1;
-    while (!L && f > 0.05) { f *= 0.8; for (i = 0; i < n; i++) for (j = 0; j < n; j++) if (i !== j) R[i][j] *= 0.8; L = cholesky(R); }
-    if (!L) return { indep: indep, conj: indep, correlacionadas: corr };
-    var umbral = patas.map(function (x) { return normInv(Math.min(.999, Math.max(.001, x.p))); });
-    var rnd = mulberry32(20261113), N = muestras || 30000, ok = 0, e = new Array(n), z, h, k;
-    for (var s = 0; s < N; s++) {
-      for (i = 0; i < n; i++) e[i] = gauss(rnd);
-      h = true;
-      for (i = 0; i < n && h; i++) {
-        z = 0; for (k = 0; k <= i; k++) z += L[i][k] * e[k];
-        if (z > umbral[i]) h = false;
-      }
-      if (h) ok++;
+    var res;
+    if (!corr) res = { indep: indep, conj: indep, correlacionadas: 0 };
+    else {
+      var bloques = new Map();
+      for (i = 0; i < n; i++) { var b = raiz(i); if (!bloques.has(b)) bloques.set(b, []); bloques.get(b).push(i); }
+      var conj = 1, fallo = false;
+      bloques.forEach(function (idx) {
+        if (fallo) return;
+        var t = idx.map(function (k) { return normInv(Math.min(.999, Math.max(.001, patas[k].p))); });
+        if (idx.length === 1) { conj *= patas[idx[0]].p; return; }
+        if (idx.length === 2) { conj *= bvnu(-t[0], -t[1], Rfull[idx[0]][idx[1]]); return; }
+        var R = idx.map(function (a) { return idx.map(function (b2) { return a === b2 ? 1 : Rfull[a][b2]; }); });
+        var pb = monteCarlo(R, t, N);
+        if (pb == null) { fallo = true; return; }
+        conj *= pb;
+      });
+      res = { indep: indep, conj: fallo ? indep : conj, correlacionadas: corr };
     }
-    return { indep: indep, conj: ok / N, correlacionadas: corr };
+    if (memo.size > 500) memo.clear();
+    memo.set(clave, res);
+    return { indep: res.indep, conj: res.conj, correlacionadas: res.correlacionadas };
   }
 
-  var api = { conjunta: conjunta, rho: rho, normInv: normInv };
+  var api = { conjunta: conjunta, rho: rho, normInv: normInv, bvnu: bvnu, phi: phi };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Correlacion = api;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -2,15 +2,16 @@
 
 Página que toma las líneas de jugadores NBA del día, las cruza con spread, riesgo de blowout, back-to-back y lesiones, y les pone un **semáforo de riesgo**. Permite armar combinadas pata por pata viendo la cuota y la probabilidad en vivo.
 
-**Versión 0.4.0**
+**Versión 0.5.0**
 
 ## Qué trae
 
-- **Partidos del día**: spread, total, moneyline, probabilidad de blowout, back-to-back / 3 en 4 y lesiones.
+- **Cuatro secciones**: **Partidos** (inicio), **Líneas**, **Sugeridas** y **Combinada**. En el celular se cambian con la barra de pestañas de abajo; en escritorio las pestañas van arriba y «Mi combinada» queda siempre a la derecha. Cada sección tiene su dirección (`#/partidos`, `#/lineas?partido=…`, `#/sugeridas`, `#/combinada`, `#/metodo`), así que el botón «Atrás» y los marcadores funcionan, y cada sección conserva su scroll.
+- **Partidos del día**: spread, total, moneyline, probabilidad de blowout (medidor con zonas fijas), back-to-back / 3 en 4 y lesiones. «Ver líneas ›» abre las líneas de ese partido. Los partidos que ya empezaron dicen **En juego** o **Final**: sus líneas no se pueden sumar y no entran en las sugeridas.
 - **Solo líneas con cuota de Betano**, en una tabla tipo LudoProps: jugador, cuota de Betano, gráfico de los últimos 10 con la línea punteada, probabilidad y tasas de acierto (últimos 10 y temporada). Hoy son ≈850 jugador-mercado y ≈2.500 líneas. Para cada jugador se muestra la **línea más alta que cumple la probabilidad mínima** que elijas (55 % a 90 %, o la recomendada por el semáforo) y un desplegable con **todas las líneas de Betano** (+4,5, +5,5…) con cuota, probabilidad, **cuota justa** y semáforo.
 - **Solo «más de» por defecto.** Los «menos» se pueden ver, solo para la línea principal, desde el desplegable.
-- **Semáforo** 🟢🟡🔴 por línea, con filtros por partido, tipo de mercado (puntos, rebotes, asistencias, combos, otros), probabilidad mínima, cuota y búsqueda.
-- **Armador de combinadas**: sumá patas desde cualquier línea de la escalera (elegir otra línea del mismo jugador y mercado reemplaza la anterior), editá la cuota de cada una (por ejemplo, con la de Stake), mirá cuota total, probabilidad con correlación, cuota justa de la combinada, ventaja estimada y el semáforo. Guarda combinadas en el navegador.
+- **Semáforo** 🟢🟡🔴 por línea, con filtros por partido, tipo de mercado (puntos, rebotes, asistencias, combos, otros), probabilidad mínima, semáforo y búsqueda (sin importar tildes); mercado exacto, orden, «solo modelo completo» y «menos» están en «Más filtros». El % de probabilidad lleva el color del semáforo de su línea, y el color también se anuncia como texto para lectores de pantalla.
+- **Armador de combinadas**: sumá patas desde cualquier línea de la escalera (elegir otra línea del mismo jugador y mercado reemplaza la anterior), editá la cuota de cada una (por ejemplo, con la de Stake; se escribe con coma: «1,85»), mirá cuota total, probabilidad con correlación, cuota justa de la combinada, ventaja estimada y el semáforo. Guarda combinadas en el navegador. Al llegar datos nuevos, las patas se **actualizan** (probabilidad, color y cuota de Betano, salvo la cuota que editaste a mano) y se avisa si alguna línea ya no está. Una combinada guardada otro día se rearma con los datos de hoy.
 - **Combinadas sugeridas del día** (solo «más de», con cuota publicada y modelo completo): 🟢 **Segura** (3 y 4 patas, cuota ≥ 1,99; solo líneas verdes de ≥ 72 %, una pata por partido), 🟡 **Intermedia** (4 y 5 patas, cuota ≥ 5; verdes y amarillas de ≥ 60 %) y 🟣 **Soñadora** (7 patas, cuota ≥ 20; de ≥ 50 %). Cada una muestra cuota, probabilidad («1 de N») y cuota justa, y se carga con un botón en el armador para editarla. Se resuelven como una mochila: maximizar la probabilidad conjunta sujeta a la cuota mínima (relajación de Lagrange + mejora local, `docs/sugeridas.js`).
 
 ## Fuentes de datos
@@ -33,7 +34,9 @@ La escalera de cuotas de Betano se baja para **puntos, rebotes y asistencias** (
 ## Uso
 
 ```bash
+python3 scripts/resultados.py          # califica los días anteriores y recalcula docs/data/calibracion.json
 python3 scripts/actualizar.py          # baja los datos de hoy (≈3 min) y escribe docs/data/hoy.json
+node scripts/foto_sugeridas.js         # guarda las combinadas sugeridas pre-partido en el historial del día
 python3 -m http.server -d docs 8000    # abrir http://localhost:8000
 ```
 
@@ -41,11 +44,31 @@ Solo usa la librería estándar de Python 3.9+. No hay dependencias que instalar
 
 El workflow `.github/workflows/actualizar.yml` regenera los datos varias veces por día (incluyendo después del reporte oficial de lesiones de las 17:00 ET) y los publica en el repositorio. Para ver la página en línea, activá GitHub Pages sobre la carpeta `/docs` de la rama principal.
 
+### Archivos de datos (`docs/data/`)
+
+| Archivo | Qué guarda |
+|---|---|
+| `hoy.json` | Partidos (`partidos[]`, con `espn`: id del partido en ESPN) y jugador-mercado (`grupos[]`) con su escalera de líneas (`pasos[]`). En puntos, rebotes y asistencias cada grupo trae `temp` (valores de la temporada) y `tg`: un partido por fila, del más viejo al más nuevo, `[valor, minutos, local (1/0), margen, b2b (1/0)]`; margen = puntos del equipo − puntos del rival; b2b = 1 si jugó el día anterior. |
+| `historial/<fecha>.json` | Foto pre-partido del día (solo partidos que no empezaron; las corridas tardías no pisan lo anterior): `lineas` (línea principal, con `p` del modelo y `pk` de la casa sin margen), `escalera` (todas las líneas `{id, gid, m, per, L, cu, p, c}`) y `sugeridas` (las combinadas del día, la primera foto pre-partido gana). |
+| `resultados/<fecha>.json` | Box score de los días terminados: `partidos` (estado y marcador) y `jugadores` (minutos y estadísticas; 0 minutos = no jugó). `completo` es falso hasta que terminan todos los partidos; se reintenta (últimos 7 días). |
+| `calibracion.json` | Acierto esperado vs. observado por color y por tramo de probabilidad (líneas principales y escalera), Brier del modelo vs. la casa, ROI de apuesta plana por color y récord de las combinadas sugeridas por nivel. |
+
+**Cómo se califica** (todas las líneas son «más de»): gana si el valor supera la línea (con líneas x,5 no hay empate; con una línea entera el empate se anula). Si el jugador no jugó (0 minutos o no figura en el box score), la pata se **anula**, no se pierde. Combos: PRA = puntos + rebotes + asistencias; PR, PA y RA igual. Una **combinada** pierde si pierde una pata; una pata anulada cuenta como ganada a cuota 1,00 (se paga con las demás, como hacen las casas) y si se anulan todas se devuelve la apuesta. Las patas de partidos suspendidos o sin terminar y las de un período (1er cuarto) no se califican. El ROI es de apuesta plana (1 unidad por línea) a la cuota de Betano; las anuladas no cuentan.
+
+`resultados.py` hace 1 consulta a LudoProps por día (`dia`) y 1 por partido con líneas (`box`), espaciadas, solo para días sin resultados completos.
+
 ### Pruebas
 
 ```bash
 python3 -m unittest discover -s tests
-node --test tests/correlacion.test.js tests/sugeridas.test.js
+node --test tests/correlacion.test.js tests/sugeridas.test.js tests/app.test.js
+```
+
+Prueba de punta a punta de la página (Playwright + Chromium, en 390×844 y 1360×900; no consulta nada externo):
+
+```bash
+python3 -m http.server 8776 -d docs &
+PORT=8776 NODE_PATH=$(npm root -g) node tests/e2e.js     # SHOTS=carpeta guarda capturas de cada sección
 ```
 
 ## Cómo funciona el semáforo
@@ -61,11 +84,11 @@ node --test tests/correlacion.test.js tests/sugeridas.test.js
    - Ninguna línea supera 96 %: siempre queda un riesgo que las estadísticas no ven (lesión durante el partido, faltas, minutos de basura).
    - 🟡 probabilidad ≥ 55 % con casi todo a favor pero con alguna alerta.
    - 🔴 el resto; automático si es *Questionable/Doubtful*, "no sugerir" del sitio o pocos minutos.
-6. **Combinadas**: la probabilidad conjunta usa una cópula gaussiana (Monte Carlo con semilla fija). Patas del mismo jugador se correlacionan según las estadísticas que comparten; las del mismo partido, levemente; entre partidos distintos se asumen independientes.
+6. **Combinadas**: la probabilidad conjunta usa una cópula gaussiana. Como partidos distintos son independientes, se calcula por partido: dos patas del mismo partido con la normal bivariada exacta (algoritmo de Genz) y tres o más con Monte Carlo de semilla fija (`docs/correlacion.js`). Patas del mismo jugador se correlacionan según las estadísticas que comparten; las del mismo partido, levemente; entre partidos distintos se asumen independientes.
 
 ## Límites
 
-- **Las probabilidades no están validadas contra resultados.** No hay cuotas históricas públicas para hacerlo. Cada corrida guarda una foto del día en `docs/data/historial/`, para poder medir la calibración cuando haya suficientes días.
+- **La calibración recién empieza.** No hay cuotas históricas públicas: cada corrida guarda una foto pre-partido en `docs/data/historial/` y `scripts/resultados.py` la contrasta con los box scores en `docs/data/calibracion.json`. Con pocos días la muestra es chica.
 - Muestra chica: estamos al comienzo de la temporada.
 - El defensa-por-posición se muestra solo como contexto; hay poca evidencia de que prediga.
 - Las lesiones cambian hasta minutos antes del partido.

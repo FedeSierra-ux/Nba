@@ -28,7 +28,7 @@ R0 = 0.27                # probabilidad de blowout "típica" (ya incluida en los
 CV = {  # coeficiente de variación a priori por mercado (heurístico)
     'pts': .38, 'reb': .50, 'ast': .55, 'pra': .30, 'pr': .32, 'pa': .33, 'ra': .42,
     'fga': .30, 'fgm': .38, 'fg3m': .75, 'fg3a': .50, 'fta': .55, 'ftm': .65,
-    'tov': .60, 'pf': .55, 'stl': .85, 'blk': 1.0, 'dreb': .55, 'oreb': .80,
+    'tov': .60, 'pf': .55, 'stl': .85, 'blk': 1.0,
     'fg2a': .40, 'fg2m': .50, 'ast_prob': .55, 'reb_prob': .50,
     '1q_pts': .70, '1q_reb': .90, '1q_ast': 1.0,
 }
@@ -37,7 +37,7 @@ NOMBRE = {
     'pa': 'Puntos + Asistencias', 'ra': 'Rebotes + Asistencias', 'fga': 'Tiros de campo intentados',
     'fgm': 'Tiros de campo convertidos', 'fg3m': 'Triples convertidos', 'fg3a': 'Triples intentados',
     'fta': 'Libres intentados', 'ftm': 'Libres convertidos', 'tov': 'Pérdidas', 'pf': 'Faltas', 'stl': 'Robos',
-    'blk': 'Tapas', 'dreb': 'Rebotes defensivos', 'oreb': 'Rebotes ofensivos', 'fg2a': 'Dobles intentados',
+    'blk': 'Tapas', 'fg2a': 'Dobles intentados',
     'fg2m': 'Dobles convertidos', 'ast_prob': 'Asistencias (escalera)', 'reb_prob': 'Rebotes (escalera)',
     '1q_pts': '1er cuarto: puntos', '1q_reb': '1er cuarto: rebotes', '1q_ast': '1er cuarto: asistencias',
 }
@@ -512,12 +512,44 @@ def construir_grupo(f, e, ladder):
                                 "ult", "min", "min_ult", "rol", "est", "cruce", "dvp", "aj", "mod") if k2 in e}
     g.update({"L": f["linea"], "temp": temp, "fl": rojo + fl_com + extra, "rec": rec, "pasos": pasos,
               "cu_mas": casa["mas"], "cu_menos": casa["menos"]})
+    if ladder and ladder.get("tg") is not None:
+        g["tg"] = ladder["tg"]     # partidos de la temporada: [valor, min, local, margen, b2b]
     p_menos = min(P_MAX, 1 - k["p_over_main"])
     if not casa.get("menos"):
         return g
     g["menos"] = {"L": f["linea"], "cu": casa["menos"], "p": r3(p_menos),
                   "c": e["c"] if e["lado"] == "menos" else "rojo", "ju": round(1 / max(p_menos, .01), 2)}
     return g
+
+
+def serie_temporada(grafico):
+    """Partidos de la temporada de la ficha de LudoProps (lista «grafico», de más viejo a más nuevo).
+    Devuelve (temp, tg):
+      temp = [valor, ...]
+      tg   = [[valor, minutos, local (1|0), margen, b2b (1|0)], ...]
+    margen = puntos del equipo del jugador − puntos del rival (en la ficha, «marcador» es [propio, rival];
+    verificado contra los box scores de ESPN). b2b = 1 si su partido previo de la lista fue el día anterior."""
+    jugados = [x for x in (grafico or []) if isinstance(x, dict) and x.get("valor") is not None]
+    jugados.sort(key=lambda x: str(x.get("fecha") or ""))       # estable: ya vienen en orden cronológico
+    temp, tg, previa = [], [], None
+    for x in jugados:
+        mc = x.get("marcador")
+        margen = None
+        if isinstance(mc, (list, tuple)) and len(mc) == 2 and all(isinstance(v, (int, float)) for v in mc):
+            margen = int(mc[0] - mc[1])
+        b2b = 0
+        try:
+            hoy = dt.date.fromisoformat(str(x.get("fecha"))[:10])
+            if previa is not None and (hoy - previa).days == 1:
+                b2b = 1
+            previa = hoy
+        except ValueError:
+            previa = None
+        mins = x.get("min")
+        temp.append(x["valor"])
+        tg.append([x["valor"], None if mins is None else round(float(mins), 1),
+                   1 if x.get("local") else 0, margen, b2b])
+    return temp, tg
 
 
 def bajar_escaleras(filas, mercados, avisos, hilos=2, pausa=0.2, presupuesto_s=600):
@@ -533,8 +565,8 @@ def bajar_escaleras(filas, mercados, avisos, hilos=2, pausa=0.2, presupuesto_s=6
         time.sleep(pausa)
         d = pedir(f"{LUDO}ficha?id={par[0]}&prop={par[1]}&rango=temp", intentos=2, espera=1.5, timeout=20)
         betano = {float(x["linea"]): float(x["cuota"]) for x in d.get("betano_esc") or []}
-        temp = [g["valor"] for g in d.get("grafico") or [] if g.get("valor") is not None]
-        return {"betano": betano, "temp": temp}
+        temp, tg = serie_temporada(d.get("grafico"))
+        return {"betano": betano, "temp": temp, "tg": tg}
 
     with ThreadPoolExecutor(hilos) as ex:
         futs = {par: ex.submit(uno, par) for par in objetivo}
@@ -544,6 +576,42 @@ def bajar_escaleras(filas, mercados, avisos, hilos=2, pausa=0.2, presupuesto_s=6
             except Exception as e:  # noqa: BLE001
                 avisos.append(f"ficha {par}: {e}")
     return res
+
+
+# --------------------------------------------------------------------------- foto del día (historial)
+def foto_del_dia(fecha, generado_en, partidos, grupos, previa=None):
+    """Foto liviana del día para medir la calibración contra los resultados (scripts/resultados.py).
+      lineas   : línea principal de cada jugador-mercado (con «pk», la probabilidad de la casa sin margen, lado «más»)
+      escalera : todas las líneas de la escalera {id, gid, m, per, L, cu, p, c}
+      sugeridas: la escribe scripts/foto_sugeridas.js; acá solo se conserva.
+    Solo partidos que no empezaron (estado 1): después del inicio las líneas ya no son pre-partido.
+    Se combina con la foto anterior del mismo día (por jugador + mercado + período) para no perder
+    la de los partidos que ya arrancaron."""
+    previa = previa or {}
+    no_empezados = {p["gid"] for p in partidos if p.get("estado") == 1}
+    nuevas, escalera = [], []
+    for g in grupos:
+        if g["gid"] not in no_empezados:
+            continue
+        principal = next((x for x in g["pasos"] if x["L"] == g["L"]), None)
+        if principal:
+            nuevas.append({"id": g["id"], "gid": g["gid"], "m": g["m"], "per": g["per"], "L": g["L"], "mu": g["mu"],
+                           "sd": g["sd"], "cu_mas": g["cu_mas"], "cu_menos": g["cu_menos"],
+                           "p": principal["p"], "pk": principal.get("pk"), "c": principal["c"]})
+        for s in g["pasos"]:
+            escalera.append({"id": g["id"], "gid": g["gid"], "m": g["m"], "per": g["per"],
+                             "L": s["L"], "cu": s["cu"], "p": s["p"], "c": s["c"]})
+
+    def combinar(nuevos, viejos):
+        claves = {(x["id"], x["m"], x.get("per")) for x in nuevos}
+        return nuevos + [x for x in (viejos or []) if (x["id"], x["m"], x.get("per")) not in claves]
+
+    foto = {"fecha": fecha, "generado_en": generado_en,
+            "lineas": combinar(nuevas, previa.get("lineas")),
+            "escalera": combinar(escalera, previa.get("escalera"))}
+    if "sugeridas" in previa:          # la primera foto pre-partido de las sugeridas no se pisa
+        foto["sugeridas"] = previa["sugeridas"]
+    return foto
 
 
 # --------------------------------------------------------------------------- principal
@@ -593,7 +661,7 @@ def main():
     for p in tab["partidos"]:
         c = ctx[p["game_id"]]
         partidos.append({
-            "gid": p["game_id"], "local": p["local"], "visita": p["visita"],
+            "gid": p["game_id"], "espn": c.get("espn_id"), "local": p["local"], "visita": p["visita"],
             "local_nombre": p["local_eq"]["nombre"], "visita_nombre": p["visita_eq"]["nombre"],
             "local_id": p["local_eq"]["id"], "visita_id": p["visita_eq"]["id"],
             "utc": p["fecha_utc"], "estado": p["estado"], "estado_texto": p["estado_texto"],
@@ -614,30 +682,15 @@ def main():
     txt = json.dumps(salida, ensure_ascii=False, separators=(",", ":"))
     with open(os.path.join(a.salida, "hoy.json"), "w", encoding="utf-8") as fh:
         fh.write(txt)
-    # Foto liviana del día (solo la línea principal de cada jugador) para medir la calibración más adelante.
-    # Solo partidos que no empezaron: después del inicio las líneas ya no son pre-partido.
-    # Se combina con la foto anterior del mismo día para no perder la de los partidos que ya arrancaron.
-    no_empezados = {p["gid"] for p in partidos if p["estado"] == 1}
-    nuevas = []
-    for g in grupos:
-        if g["gid"] not in no_empezados:
-            continue
-        principal = next((x for x in g["pasos"] if x["L"] == g["L"]), None)
-        if principal:
-            nuevas.append({"id": g["id"], "gid": g["gid"], "m": g["m"], "per": g["per"], "L": g["L"], "mu": g["mu"],
-                           "sd": g["sd"], "cu_mas": g["cu_mas"], "cu_menos": g["cu_menos"],
-                           "p": principal["p"], "c": principal["c"]})
     ruta_foto = os.path.join(a.salida, "historial", fecha + ".json")
-    previas = []
+    previa = {}
     if os.path.exists(ruta_foto):
         try:
             with open(ruta_foto, encoding="utf-8") as fh:
-                previas = json.load(fh).get("lineas", [])
+                previa = json.load(fh)
         except (OSError, ValueError):
-            previas = []
-    claves = {(x["id"], x["m"], x["per"]) for x in nuevas}
-    foto = {"fecha": fecha, "generado_en": salida["generado_en"],
-            "lineas": nuevas + [x for x in previas if (x["id"], x["m"], x["per"]) not in claves]}
+            previa = {}
+    foto = foto_del_dia(fecha, salida["generado_en"], partidos, grupos, previa)
     with open(ruta_foto, "w", encoding="utf-8") as fh:
         json.dump(foto, fh, ensure_ascii=False, separators=(",", ":"))
     cuenta = {c: sum(1 for x in grupos if color_rec(x) == c) for c in orden}

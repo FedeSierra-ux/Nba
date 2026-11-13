@@ -2,46 +2,85 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>NBA Semáforo</title>
 <meta name="description" content="Líneas «más de» de jugadores NBA con todas las escaleras de cuotas, semáforo de riesgo, spread, blowout y armador de combinadas.">
 <meta name="theme-color" content="#0e1116">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23f0a640'/%3E%3Cpath d='M2 16h28M16 2v28M6 6c6 5 6 15 0 20M26 6c-6 5-6 15 0 20' stroke='%230e1116' stroke-width='2' fill='none'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="estilos.css?v=0.4.0">
+<link rel="stylesheet" href="estilos.css?v=0.5.0">
+<script>/* el JSON empieza a bajar ya, en paralelo con el CSS y los scripts. «no-cache» revalida con ETag (304 si no cambió) y nunca muestra datos viejos */
+window.__hoy = fetch('data/hoy.json', { cache: 'no-cache' }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
+window.__hoy.catch(function () {});</script>
 </head>
-<body>
+<body data-seccion="partidos">
 <header class="barra">
   <div class="marca"><span class="bola" aria-hidden="true"></span> NBA Semáforo</div>
   <div class="barra-info" id="info-actualizado" aria-live="polite">Cargando…</div>
-  <button class="btn-ticket" id="abrir-ticket" type="button" aria-controls="ticket">
-    Combinada <b id="ticket-n">0</b> · <span id="ticket-resumen">—</span>
-  </button>
+  <a class="btn-metodo" id="link-metodo" href="#/metodo" aria-label="Cómo se calcula" title="Cómo se calcula">?</a>
+  <a class="btn-ticket" id="abrir-ticket" href="#/combinada">
+    <span class="bt-txt">Combinada</span> <b id="ticket-n">0</b> <span id="ticket-resumen">—</span>
+  </a>
 </header>
 
-<div class="aviso" id="aviso" hidden></div>
+<nav class="secciones" id="nav-secciones" aria-label="Secciones">
+  <a href="#/partidos" data-vista="partidos" aria-current="page">
+    <svg class="sec-ico" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3v18"/></svg>
+    <span class="sec-txt">Partidos</span>
+  </a>
+  <a href="#/lineas" data-vista="lineas">
+    <svg class="sec-ico" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+    <span class="sec-txt">Líneas</span>
+  </a>
+  <a href="#/sugeridas" data-vista="sugeridas">
+    <svg class="sec-ico" aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3l2.6 5.6 6 .7-4.5 4.1 1.2 6L12 16.5 6.7 19.4l1.2-6L3.4 9.3l6-.7z"/></svg>
+    <span class="sec-txt">Sugeridas</span>
+  </a>
+  <a href="#/combinada" data-vista="combinada" class="solo-movil">
+    <svg class="sec-ico" aria-hidden="true" viewBox="0 0 24 24"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6"/></svg>
+    <span class="sec-txt">Combinada</span>
+    <span class="sec-badge" id="tab-ticket" hidden><span id="tab-ticket-n">0</span><span class="sr-only" id="tab-ticket-sr"> patas</span></span>
+  </a>
+</nav>
 
-<main class="layout">
+<div class="aviso" id="aviso" hidden></div>
+<div class="aviso aviso-ticket" id="aviso-ticket" role="status" hidden>
+  <p><span id="aviso-ticket-txt"></span> <a href="#/combinada" id="aviso-ticket-ver">Ver combinada ›</a></p>
+  <button type="button" class="cerrar-aviso" id="aviso-ticket-cerrar" aria-label="Cerrar aviso">×</button>
+</div>
+
+<main class="layout" id="contenido">
   <div class="principal">
-    <section aria-labelledby="h-partidos">
+
+    <!-- Vista: Partidos -->
+    <section class="vista" id="vista-partidos" data-vista="partidos" aria-labelledby="h-partidos">
       <div class="seccion-cab">
-        <h2 id="h-partidos">Partidos de hoy</h2>
-        <button type="button" class="chip" id="todos-partidos" aria-pressed="true">Todos</button>
+        <h2 id="h-partidos" tabindex="-1">Partidos de hoy</h2>
       </div>
+      <p class="ayuda"><span class="solo-chico" id="info-hoy"></span>Tocá un partido para ver sus líneas «más de». <a href="#/metodo">Cómo se calcula el semáforo</a></p>
       <div id="partidos" class="partidos"></div>
     </section>
 
-    <section aria-labelledby="h-sug">
-      <div class="seccion-cab"><h2 id="h-sug">Combinadas sugeridas del día</h2></div>
-      <p class="ayuda">Armadas con las líneas «más de» de hoy: para cada nivel se buscan las patas que <b>maximizan la probabilidad</b> con la cuota total mínima indicada. Cargalas en tu combinada para ver el detalle y cambiar cualquier pata o cuota.</p>
-      <div id="sug-dia" class="comb-grid"></div>
-    </section>
-
-    <section aria-labelledby="h-lineas">
+    <!-- Vista: Líneas «más de» -->
+    <section class="vista" id="vista-lineas" data-vista="lineas" aria-labelledby="h-lineas" hidden>
       <div class="seccion-cab">
-        <h2 id="h-lineas">Líneas «más de»</h2>
-        <span class="contador" id="contador"></span>
+        <h2 id="h-lineas" tabindex="-1">Líneas «más de»</h2>
+        <span class="contador" id="contador" aria-live="polite"></span>
       </div>
-      <p class="ayuda">Solo líneas con <b>cuota de Betano</b>. Cada jugador muestra la <b>línea más alta</b> que todavía cumple la probabilidad mínima que elijas. Tocá <b>«N líneas ▾»</b> para ver las demás (+3,5, +4,5…) con su cuota y probabilidad.</p>
+      <p class="ayuda">Solo líneas con <b>cuota de Betano</b>. Cada jugador muestra la <b>línea más alta</b> que cumple la probabilidad mínima; <b>«N líneas ▾»</b> abre su escalera completa.</p>
+
+      <div class="filtros filtros-base" role="group" aria-label="Partido y probabilidad">
+        <label class="campo">Partido
+          <select id="f-partido" autocomplete="off"><option value="">Todos los partidos</option></select>
+        </label>
+        <label class="campo">Probabilidad mínima
+          <select id="f-prob" autocomplete="off">
+            <option value="rec">Recomendada (semáforo)</option>
+            <option value="0.55">55%</option><option value="0.60">60%</option><option value="0.65">65%</option>
+            <option value="0.70" selected>70%</option><option value="0.75">75%</option><option value="0.80">80%</option>
+            <option value="0.85">85%</option><option value="0.90">90%</option>
+          </select>
+        </label>
+      </div>
 
       <div class="chips-grupo" id="f-grupo" role="group" aria-label="Tipo de mercado">
         <button type="button" class="chip" data-g="todos" aria-pressed="true">Todos</button>
@@ -52,52 +91,58 @@
         <button type="button" class="chip" data-g="otros" aria-pressed="false">Otros</button>
       </div>
 
-      <div class="filtros" role="group" aria-label="Filtros">
-        <label class="campo">Probabilidad mínima
-          <select id="f-prob">
-            <option value="rec">Recomendada (semáforo)</option>
-            <option value="0.55">55%</option><option value="0.60">60%</option><option value="0.65">65%</option>
-            <option value="0.70" selected>70%</option><option value="0.75">75%</option><option value="0.80">80%</option>
-            <option value="0.85">85%</option><option value="0.90">90%</option>
-          </select>
-        </label>
+      <div class="filtros" role="group" aria-label="Semáforo y búsqueda">
         <div class="grupo-colores" id="f-color" role="group" aria-label="Semáforo">
-          <button type="button" class="sem verde" data-c="verde" aria-pressed="true">● Verde <i id="n-verde"></i></button>
-          <button type="button" class="sem amarillo" data-c="amarillo" aria-pressed="true">● Amarillo <i id="n-amarillo"></i></button>
-          <button type="button" class="sem rojo" data-c="rojo" aria-pressed="false">● Rojo <i id="n-rojo"></i></button>
+          <button type="button" class="sem verde" data-c="verde" aria-pressed="true"><span aria-hidden="true">●</span> Verde <i id="n-verde"></i></button>
+          <button type="button" class="sem amarillo" data-c="amarillo" aria-pressed="true"><span aria-hidden="true">●</span> Amarillo <i id="n-amarillo"></i></button>
+          <button type="button" class="sem rojo" data-c="rojo" aria-pressed="false"><span aria-hidden="true">●</span> Rojo <i id="n-rojo"></i></button>
         </div>
         <input id="f-q" type="search" placeholder="Buscar jugador o equipo" aria-label="Buscar jugador o equipo" autocomplete="off">
-        <select id="f-mercado" aria-label="Mercado exacto"><option value="">Cualquier mercado</option></select>
-        <select id="f-orden" aria-label="Ordenar por">
-          <option value="cuota">Mayor cuota</option>
-          <option value="p">Mayor probabilidad</option>
-          <option value="sem">Semáforo y probabilidad</option>
-          <option value="ev">Mayor ventaja vs. cuota</option>
-          <option value="min">Más minutos</option>
-        </select>
-      </div>
-      <div class="filtros chico">
-        <label class="check"><input type="checkbox" id="f-completo"> Solo modelo completo</label>
-        <label class="check"><input type="checkbox" id="f-menos"> Mostrar también «menos» en el desplegable</label>
       </div>
 
+      <details class="mas-filtros" id="mas-filtros">
+        <summary>Más filtros <span class="mut" id="mas-filtros-n">(orden, mercado exacto…)</span></summary>
+        <div class="filtros">
+          <select id="f-mercado" aria-label="Mercado exacto" autocomplete="off"><option value="">Cualquier mercado</option></select>
+          <select id="f-orden" aria-label="Ordenar por" autocomplete="off">
+            <option value="cuota">Mayor cuota</option>
+            <option value="p">Mayor probabilidad</option>
+            <option value="sem">Semáforo y probabilidad</option>
+            <option value="ev">Mayor ventaja vs. cuota</option>
+            <option value="min">Más minutos</option>
+          </select>
+        </div>
+        <div class="filtros checks">
+          <label class="check"><input type="checkbox" id="f-completo" autocomplete="off"> Solo modelo completo</label>
+          <label class="check"><input type="checkbox" id="f-menos" autocomplete="off"> Mostrar también «menos» en el desplegable</label>
+        </div>
+      </details>
+
       <div class="tabla">
-        <div class="cab-tabla" aria-hidden="true"><span>Jugador</span><span>Betano</span><span>Últimos 10</span><span>Prob.</span><span>Últ. 10</span><span>Temp.</span><span></span></div>
+        <div class="cab-tabla" aria-hidden="true"><span>Jugador</span><span>Betano</span><span>Últimos 10 partidos</span><span>Prob.</span><span>Acierto 10</span><span>Acierto temp.</span><span></span></div>
         <div id="lineas" class="lineas"></div>
       </div>
       <button type="button" class="mas-btn" id="ver-mas" hidden>Ver más jugadores</button>
     </section>
 
-    <details class="metodo">
-      <summary>Cómo se calcula el semáforo y qué límites tiene</summary>
-      <div id="metodo"></div>
-    </details>
+    <!-- Vista: Combinadas sugeridas -->
+    <section class="vista" id="vista-sugeridas" data-vista="sugeridas" aria-labelledby="h-sug" hidden>
+      <div class="seccion-cab"><h2 id="h-sug" tabindex="-1">Combinadas sugeridas del día</h2></div>
+      <p class="ayuda">Armadas con líneas «más de» de partidos que no empezaron: cada nivel busca las patas que <b>maximizan la probabilidad</b> con la cuota total mínima indicada. Cargalas en tu combinada para cambiar cualquier pata o cuota.</p>
+      <div id="sug-dia" class="comb-grid"></div>
+    </section>
+
+    <!-- Vista secundaria: Cómo se calcula (sin pestaña) -->
+    <section class="vista" id="vista-metodo" data-vista="metodo" aria-labelledby="h-metodo" hidden>
+      <div class="seccion-cab"><h2 id="h-metodo" tabindex="-1">Cómo se calcula el semáforo y qué límites tiene</h2></div>
+      <div id="metodo" class="metodo"></div>
+    </section>
   </div>
 
-  <aside class="ticket" id="ticket" aria-label="Armador de combinadas">
+  <!-- Mi combinada: columna lateral en escritorio; sección propia (#/combinada) en móvil -->
+  <aside class="ticket" id="ticket" data-vista="combinada" aria-labelledby="h-ticket">
     <div class="ticket-cab">
-      <h2>Mi combinada</h2>
-      <button type="button" class="cerrar" id="cerrar-ticket" aria-label="Cerrar">×</button>
+      <h2 id="h-ticket" tabindex="-1">Mi combinada</h2>
     </div>
     <div id="ticket-cuerpo"></div>
     <div class="guardadas">
@@ -106,10 +151,10 @@
     </div>
   </aside>
 </main>
-<footer class="pie">NBA Semáforo v0.4.0 · Análisis estadístico, no garantiza resultados. Apostá con responsabilidad.</footer>
-<div class="fondo" id="fondo" hidden></div>
-<script src="correlacion.js?v=0.4.0"></script>
-<script src="sugeridas.js?v=0.4.0"></script>
-<script src="app.js?v=0.4.0"></script>
+<footer class="pie">NBA Semáforo v0.5.0 · <a href="#/metodo">Cómo se calcula</a> · Análisis estadístico, no garantiza resultados. Apostá con responsabilidad.</footer>
+<div class="sr-only" id="anuncio" aria-live="polite"></div>
+<script src="correlacion.js?v=0.5.0"></script>
+<script src="sugeridas.js?v=0.5.0"></script>
+<script src="app.js?v=0.5.0"></script>
 </body>
 </html>
