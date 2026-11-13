@@ -115,6 +115,44 @@ var NbaUtil = (function () {
     if (esNum(l.cuota) && +l.cuota > 1 && +l.cuota !== l.cuotaOrig) n.cuota = +l.cuota;   // cuota editada a mano: se respeta
     return n;
   }
+  /* Cuota mínima: no se muestran líneas que paguen menos (la misma constante CUOTA_MIN de scripts/actualizar.py). */
+  var CUOTA_MIN = 1.30;
+  /* Línea recomendada de una escalera, igual que el script: la verde más alta, si no la amarilla más alta, si no la de mayor p. */
+  function recLinea(pasos) {
+    if (!pasos || !pasos.length) return null;
+    var alta = function (a, b) { return b.L > a.L ? b : a; };
+    for (var i = 0; i < 2; i++) {
+      var col = i ? 'amarillo' : 'verde', cand = pasos.filter(function (s) { return s.c === col; });
+      if (cand.length) return cand.reduce(alta).L;
+    }
+    return pasos.reduce(function (a, b) { return b.p > a.p ? b : a; }).L;
+  }
+  /* Saca de cada grupo las líneas con cuota de Betano menor a min (un hoy.json generado antes del filtro del script las trae),
+     descarta los grupos que quedan sin líneas y recalcula la recomendada (rec). El «menos» con cuota baja también se saca.
+     No modifica los grupos originales: devuelve copias de los que cambian. */
+  function filtrarCuotaMin(grupos, min) {
+    min = min == null ? CUOTA_MIN : min;
+    var baja = function (x) { return !!x && x.cu != null && isFinite(+x.cu) && +x.cu < min; };
+    var out = [];
+    (Array.isArray(grupos) ? grupos : []).forEach(function (g) {
+      if (!g || !Array.isArray(g.pasos)) return;
+      var pasos = g.pasos.filter(function (s) { return s && typeof s === 'object' && !baja(s); });
+      if (!pasos.length) return;
+      if (pasos.length === g.pasos.length && !baja(g.menos)) { out.push(g); return; }
+      var n = Object.assign({}, g, { pasos: pasos, rec: recLinea(pasos) });
+      if (baja(g.menos)) n.menos = null;
+      out.push(n);
+    });
+    return out;
+  }
+  /* Iniciales para la foto de reemplazo: «Shai Gilgeous-Alexander» → «SG», «Jaren Jackson Jr.» → «JJ». */
+  function iniciales(nombre) {
+    var w = String(nombre || '').trim().split(/\s+/).filter(function (x) { return x && !/^(jr|sr|ii|iii|iv|v)\.?$/i.test(x); });
+    if (!w.length) return '?';
+    var ini = function (x) { var m = x.match(/[A-Za-zÀ-ÖØ-öø-ɏ0-9]/); return m ? m[0] : ''; };
+    return (ini(w[0]) + (w.length > 1 ? ini(w[w.length - 1]) : '')).toUpperCase() || '?';
+  }
+
   /* Línea recomendada por el semáforo (g.rec) o, si no está, la de mejor color y más alta. */
   var RANGO = { verde: 2, amarillo: 1, rojo: 0 };
   function recPaso(g) {
@@ -171,7 +209,7 @@ var NbaUtil = (function () {
      op: {T, n, pmin, colores:[…], porJuego, tipos:[…], excluidos:{id:true}}; grupos: solo partidos que no empezaron.
      → {legs:[{g, s, cu}], nivel} o {error: 'pocas' | 'cuota', jugadores, maxCuota, nivel}. */
   function armarCombinada(grupos, op, Sug) {
-    var nivel = { id: 'propia', nombre: 'A tu medida', T: op.T, colores: op.colores.slice(), pmin: op.pmin, cmin: 1.10, porJuego: op.porJuego, porMercado: op.n };
+    var nivel = { id: 'propia', nombre: 'A tu medida', T: op.T, colores: op.colores.slice(), pmin: op.pmin, cmin: CUOTA_MIN, porJuego: op.porJuego, porMercado: op.n };
     var gs = grupos.filter(function (g) { return op.tipos.indexOf(tipoMercado(g)) >= 0; });
     var pool = Sug.candidatas(gs, nivel, op.excluidos || {});
     var jug = {}; pool.forEach(function (x) { jug[x.g.id] = 1; });
@@ -191,7 +229,8 @@ var NbaUtil = (function () {
 
   return { fL: fL, fC: fC, fP: fP, fMonto: fMonto, fmtML: fmtML, leerDecimal: leerDecimal, leerCuota: leerCuota, leerMonto: leerMonto,
     corto: corto, etiquetas: etiquetas, gkey: gkey, cuotaDe: cuotaDe, nuevaPata: nuevaPata, refrescarPata: refrescarPata, recPaso: recPaso, RANGO: RANGO,
-    splits: splits, contextoHoy: contextoHoy, tipoMercado: tipoMercado, armarCombinada: armarCombinada };
+    splits: splits, contextoHoy: contextoHoy, tipoMercado: tipoMercado, armarCombinada: armarCombinada,
+    CUOTA_MIN: CUOTA_MIN, recLinea: recLinea, filtrarCuotaMin: filtrarCuotaMin, iniciales: iniciales };
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = NbaUtil;
 
@@ -211,7 +250,11 @@ if (typeof module !== 'undefined' && module.exports) module.exports = NbaUtil;
   var COLORES = ['verde', 'amarillo', 'rojo'];
   var color = function (c) { return COLORES.indexOf(c) >= 0 ? c : 'rojo'; };
   var LADO = { mas: 'Más de', menos: 'Menos de' };
-  var CLAVE_TICKET = 'nba_semaforo_ticket_v2', CLAVE_GUARDADAS = 'nba_semaforo_guardadas_v2', CLAVE_NOMBRES = 'nba_semaforo_nombres_v1';
+  var CLAVE_TICKET = 'nba_semaforo_ticket_v2', CLAVE_GUARDADAS = 'nba_semaforo_guardadas_v2', CLAVE_NOMBRES = 'nba_semaforo_nombres_v1', CLAVE_ACIERTO = 'nba_semaforo_acierto_v1';
+  /* Última columna de Líneas: acierto de la línea en los últimos 10 (r10) o en la temporada (rt). */
+  var ACIERTO = { r10: { corto: 'Últ. 10', largo: 'Acierto en los últimos 10' }, rt: { corto: 'Temp.', largo: 'Acierto en la temporada' } };
+  /* Fotos: CDN público de la NBA (los ids de jugador son los person id de la NBA). Si no cargan, se ven las iniciales. */
+  var FOTO = function (id) { return 'https://cdn.nba.com/headshots/nba/latest/260x190/' + id + '.png'; };
   var PAGINA = 40;
   var GRUPOS = { pts: ['pts'], reb: ['reb'], ast: ['ast'], combos: ['pra', 'pr', 'pa', 'ra'] };
   var PRINCIPALES = ['pts', 'reb', 'ast', 'pra', 'pr', 'pa', 'ra'];
@@ -224,7 +267,8 @@ if (typeof module !== 'undefined' && module.exports) module.exports = NbaUtil;
     mostrar: PAGINA, ticket: [], guardadas: [], stake: 1000, lista: [], pos: new Map(), pintadas: new Set(), abiertos: new Set(), notaTicket: '',
     // secciones: vista visible, última vista principal (no «combinada»), scroll por vista y qué falta pintar
     vista: '', ultimaPrincipal: 'partidos', scroll: {}, sucio: { filtro: true }, hecho: {},
-    porId: new Map(), porGid: new Map(), nombres: {}
+    porId: new Map(), porGid: new Map(), nombres: {},
+    acierto: 'r10', sinFoto: new Set()
   };
 
   // ----------------------------------------------------------------- almacenamiento (puede fallar: modo privado, datos corruptos)
@@ -313,7 +357,8 @@ if (typeof module !== 'undefined' && module.exports) module.exports = NbaUtil;
   function iniciar(d) {
     if (!d || !Array.isArray(d.grupos) || !Array.isArray(d.partidos)) throw new Error('formato de datos inesperado');
     S.data = d;
-    S.grupos = d.grupos.filter(function (g) { return g && Array.isArray(g.pasos) && g.pasos.length && MERCADOS_FUERA.indexOf(g.m) < 0; });
+    // sin mercados que Betano no ofrece y sin líneas que paguen menos de 1,30 (un hoy.json viejo puede traerlas)
+    S.grupos = U.filtrarCuotaMin(d.grupos.filter(function (g) { return g && Array.isArray(g.pasos) && g.pasos.length && MERCADOS_FUERA.indexOf(g.m) < 0; }));
     S.grupos.forEach(function (g) { g._q = norm(g.j + ' ' + g.eq + ' ' + g.riv); });   // texto de búsqueda, una sola vez
     S.porClave = new Map(S.grupos.map(function (g) { return [gkey(g), g]; }));
     S.porId = new Map(S.grupos.map(function (g) { return [g.id, g]; }));
@@ -353,6 +398,13 @@ if (typeof module !== 'undefined' && module.exports) module.exports = NbaUtil;
     var fm = $('#f-menos'); if (fm) S.menos = fm.checked;
     var fo = $('#f-orden'); if (fo && fo.value) S.orden = fo.value;
     var fq = $('#f-q'); if (fq) S.q = fq.value;
+    var a = leer(CLAVE_ACIERTO, 'r10'); S.acierto = ACIERTO[a] ? a : 'r10';
+    marcarAcierto();
+  }
+  /* Encabezado «Últ. 10 ▾»: un <select> nativo transparente sobre un rótulo corto (el rótulo largo no entra en 390 px). */
+  function marcarAcierto() {
+    var f = $('#f-acierto'); if (f) f.value = S.acierto;
+    $$('#f-acierto-txt').textContent = ACIERTO[S.acierto].corto;
   }
 
   function cabecera() {
@@ -479,32 +531,50 @@ if (typeof module !== 'undefined' && module.exports) module.exports = NbaUtil;
     $$('#mas-filtros-n').textContent = n ? '(' + n + (n === 1 ? ' activo)' : ' activos)') : '(orden, mercado exacto…)';
   }
 
-  // ----------------------------------------------------------------- tarjetas
-  /* Gráfico de los últimos 10 (más reciente a la derecha) con la línea punteada, como en LudoProps.
+  // ----------------------------------------------------------------- filas (estilo LudoProps)
+  /* Gráfico de los últimos 10 (el más reciente a la derecha) con la línea punteada. Verde = superó la línea; rojo = no.
+     Los partidos de la temporada pasada (g.n = partidos de esta temporada) van más apagados.
      Sin <title> por barra: el aria-label del SVG ya trae los valores (≈ 10 nodos menos por fila). */
   function barras(g, s) {
-    var ult = lista(g.ult).filter(function (v) { return typeof v === 'number' && isFinite(v); }), W = 120, H = 40, n = ult.length || 1, paso = W / n, ancho = paso - 2;
-    var mx = Math.max.apply(null, ult.concat([s.L * 1.6, 1]));
+    var ult = lista(g.ult).filter(function (v) { return typeof v === 'number' && isFinite(v); }), W = 124, H = 40, n = ult.length || 1, paso = W / n, ancho = Math.max(2, paso - 2.6);
+    var nTemp = typeof g.n === 'number' && isFinite(g.n) && g.n >= 0 ? g.n : ult.length, previas = Math.max(0, ult.length - nTemp);
+    var mx = Math.max.apply(null, ult.concat([s.L * 1.25, 1])) * 1.06;
     var yL = H - s.L / mx * H;
     var rects = ult.map(function (v, i) {
       var h = Math.max(2, v / mx * H);
-      return '<rect x="' + (i * paso + 1).toFixed(1) + '" y="' + (H - h).toFixed(1) + '" width="' + ancho.toFixed(1) + '" height="' + h.toFixed(1) + '" rx="1.5" class="' + (v > s.L ? 'ok' : 'no') + '"/>';
+      return '<rect x="' + (i * paso + 1.3).toFixed(1) + '" y="' + (H - h).toFixed(1) + '" width="' + ancho.toFixed(1) + '" height="' + h.toFixed(1) + '" class="' + (v > s.L ? 'ok' : 'no') + (i < previas ? ' prev' : '') + '"/>';
     }).join('');
-    return '<svg class="mini" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMinYMid meet" role="img" aria-label="Últimos ' + ult.length + ' partidos (el más reciente a la derecha): ' + esc(ult.map(fL).join('; ')) + '. Línea ' + fL(s.L) + '">' +
-      rects + '<line x1="0" x2="' + W + '" y1="' + yL.toFixed(1) + '" y2="' + yL.toFixed(1) + '" class="raya"/></svg>';
+    return '<svg class="mini" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" role="img" aria-label="Últimos ' + ult.length + ' partidos (el más reciente a la derecha): ' + esc(ult.map(fL).join('; ')) + '. Línea ' + fL(s.L) +
+      (previas ? '. ' + (previas === 1 ? 'El primero es' : 'Los ' + previas + ' primeros son') + ' de la temporada pasada' : '') + '">' +
+      rects + '<line x1="0" x2="' + W + '" y1="' + yL.toFixed(1) + '" y2="' + yL.toFixed(1) + '" class="raya" vector-effect="non-scaling-stroke"/></svg>';
   }
   function etiquetas(g, s) {
     return U.etiquetas(g, s).map(function (t) { return '<span class="tag ' + t.nivel + '"' + (t.full !== t.txt ? ' title="' + esc(t.full) + '"' : '') + '>' + esc(t.txt) + '</span>'; }).join('');
   }
   var legDe = function (g) { var k = gkey(g); return S.ticket.find(function (l) { return l.gkey === k; }); };
-  var celda = function (cls, corto, largo, valor) {
-    return '<div class="col-num ' + cls + '"><span class="col-lab"><span aria-hidden="true">' + corto + '</span><span class="sr-only">' + largo + ' </span></span><b>' + valor + '</b></div>';
-  };
+  /* Foto del jugador (alt vacío: el nombre ya está como texto). Si ya falló una vez, directamente las iniciales. */
+  function foto(g) {
+    var ini = U.iniciales(g.j);
+    if (!/^\d{1,10}$/.test(String(g.id)) || S.sinFoto.has(+g.id)) return '<span class="foto foto-ini" aria-hidden="true">' + esc(ini) + '</span>';
+    return '<img class="foto" src="' + FOTO(+g.id) + '" width="44" height="44" loading="lazy" decoding="async" alt="" data-id="' + (+g.id) + '" data-ini="' + esc(ini) + '">';
+  }
+  function fotoFallida(e) {
+    var im = e.target;
+    if (!im || im.tagName !== 'IMG' || !im.classList.contains('foto')) return;
+    S.sinFoto.add(+im.dataset.id);
+    var sp = document.createElement('span');
+    sp.className = 'foto foto-ini'; sp.setAttribute('aria-hidden', 'true'); sp.textContent = im.dataset.ini || '?';
+    im.replaceWith(sp);
+  }
+  var pillCuota = function (cu, casa) { return '<span class="pill-cuota">' + (casa ? '<span class="pill-casa">Betano</span> ' : '') + '<b>' + fC(cu) + '</b></span>'; };
 
-  function botonMas(L, activo, bloq, chico) {
+  /* desc: qué se agrega («Jrue Holiday más de 9,5 puntos»), para que el botón grande no se llame igual en todas las filas. */
+  function botonMas(L, activo, bloq, chico, desc) {
     var etiqueta = activo ? (chico ? '✓' : '✓ En combinada') : bloq ? (chico ? '—' : 'Partido empezado') : (chico ? '+' : '+ Agregar');
+    var nombre = chico ? (bloq ? 'Partido empezado: no se puede agregar' : 'Agregar más de ' + fL(L)) :
+      desc ? (activo ? 'En combinada' : bloq ? 'Partido empezado' : 'Agregar') + ': ' + desc : '';
     return '<button type="button" class="add' + (chico ? ' add-esc' : '') + (activo ? ' en-ticket' : '') + '" data-add="mas" data-l="' + L + '" aria-pressed="' + (activo ? 'true' : 'false') + '"' +
-      (bloq ? ' disabled' : '') + (chico ? ' aria-label="' + (bloq ? 'Partido empezado: no se puede agregar' : 'Agregar más de ' + fL(L)) + '"' : '') + '>' + etiqueta + '</button>';
+      (bloq ? ' disabled' : '') + (nombre ? ' aria-label="' + esc(nombre) + '"' : '') + '>' + etiqueta + '</button>';
   }
 
   function escalera(g, sel) {
@@ -513,37 +583,41 @@ if (typeof module !== 'undefined' && module.exports) module.exports = NbaUtil;
       var activo = !!t && t.L === s.L && t.lado === 'mas';
       return '<tr class="paso c-' + color(s.c) + (s.L === sel.L ? ' sel' : '') + '">' +
         '<td><b>Más de ' + fL(s.L) + '</b><span class="sr-only"> · semáforo ' + color(s.c) + '</span>' + (s.L === g.L ? ' <small>principal</small>' : '') + '</td>' +
-        '<td><span class="badge-cuota">' + fC(s.cu) + '</span></td>' +
-        '<td class="l-prob"><b>' + fP(s.p) + '</b></td><td>' + fP(s.r10) + '</td><td>' + (s.rt != null ? fP(s.rt) : '—') + '</td>' +
-        '<td title="1 / probabilidad: si tu casa paga más que esto, hay valor según el modelo">' + fC(s.ju) + '</td>' +
-        '<td aria-hidden="true"><span class="punto-mini"></span></td>' +
+        '<td>' + pillCuota(s.cu) + '</td>' +
+        '<td class="l-prob"><b>' + fP(s.p) + '</b></td><td>' + fP(s.r10) + '</td><td class="esc-temp">' + (s.rt != null ? fP(s.rt) : '—') + '</td>' +
         '<td>' + botonMas(s.L, activo, bloq && !activo, true) + '</td></tr>';
     }).join('');
     var menos = '';
     if (S.menos && g.menos) {
       var am = !!t && t.lado === 'menos', mc = color(g.menos.c);
-      menos = '<tr class="paso c-' + mc + ' menos"><td><b>Menos de ' + fL(g.menos.L) + '</b><span class="sr-only"> · semáforo ' + mc + '</span></td><td><span class="badge-cuota">' + fC(g.menos.cu) + '</span></td><td class="l-prob"><b>' + fP(g.menos.p) + '</b></td><td>—</td><td>—</td><td>' + fC(g.menos.ju) + '</td>' +
-        '<td aria-hidden="true"><span class="punto-mini"></span></td><td><button type="button" class="add add-esc' + (am ? ' en-ticket' : '') + '" data-add="menos" data-l="' + g.L + '" aria-pressed="' + (am ? 'true' : 'false') + '"' + (bloq && !am ? ' disabled' : '') + ' aria-label="Agregar menos de ' + fL(g.L) + '">' + (am ? '✓' : bloq ? '—' : '+') + '</button></td></tr>';
+      menos = '<tr class="paso c-' + mc + ' menos"><td><b>Menos de ' + fL(g.menos.L) + '</b><span class="sr-only"> · semáforo ' + mc + '</span></td><td>' + pillCuota(g.menos.cu) + '</td><td class="l-prob"><b>' + fP(g.menos.p) + '</b></td><td>—</td><td class="esc-temp">—</td>' +
+        '<td><button type="button" class="add add-esc' + (am ? ' en-ticket' : '') + '" data-add="menos" data-l="' + g.L + '" aria-pressed="' + (am ? 'true' : 'false') + '"' + (bloq && !am ? ' disabled' : '') + ' aria-label="Agregar menos de ' + fL(g.L) + '">' + (am ? '✓' : bloq ? '—' : '+') + '</button></td></tr>';
     }
+    var prom = '<p class="nota">Promedio: temporada <b>' + fL(g.pt) + '</b> · últimos 10 <b>' + fL(g.p10) + '</b> · proyección <b>' + fL(g.mu) + '</b></p>';
     var temp = g.temp && g.temp.length ? '<p class="nota">Partidos de la temporada (del más antiguo al más reciente): ' + esc(lista(g.temp).map(fL).join('; ')) + '</p>' : '';
-    return '<div class="escalera"><table><thead><tr><th>Línea</th><th>Betano</th><th>Prob.</th><th>Últ. 10</th><th>Temp.</th><th>Justa</th><th><span class="sr-only">Semáforo</span></th><th><span class="sr-only">Agregar</span></th></tr></thead><tbody>' + filas + menos + '</tbody></table>' +
-      '<p class="nota"><b>Justa</b> = cuota que haría el modelo (1 / probabilidad). Si tu casa (por ejemplo Stake) paga más que eso, hay valor según el modelo.</p>' + temp + '</div>';
+    return '<div class="escalera"><table><thead><tr><th scope="col">Línea</th><th scope="col">Betano</th><th scope="col">Prob.</th><th scope="col">Últ. 10</th><th scope="col" class="esc-temp">Temp.</th><th scope="col"><span class="sr-only">Agregar</span></th></tr></thead><tbody>' + filas + menos + '</tbody></table>' +
+      prom + temp + '</div>';
   }
 
+  /* Una fila: Jugador (foto, nombre, línea, cuota y minutos) · Últimos 10 · Modelo · acierto; debajo del gráfico, «N líneas ▾» y
+     «+ Agregar»; abajo de todo, las etiquetas. */
   function tarjeta(it) {
     var g = it.g, s = it.s, k = gkey(g), abierto = S.abiertos.has(k), t = legDe(g), est = estadoDe(g.gid), c = color(s.c);
     var activo = !!t && t.L === s.L && t.lado === 'mas', tags = etiquetas(g, s), varias = g.pasos.length > 1;
-    return '<article class="linea c-' + c + (est ? ' empezado' : '') + '" data-k="' + esc(k) + '">' +
-      '<div class="col-jug"><div class="jug-cab"><b class="nombre">' + esc(g.j) + '</b> <span class="mut">' + esc(g.eq) + (g.pos ? ', ' + esc(g.pos) : '') + '</span>' + badgeEstado(est) + '</div>' +
+    var ac = ACIERTO[S.acierto] || ACIERTO.r10, hit = S.acierto === 'rt' ? s.rt : s.r10;
+    return '<article class="linea c-' + c + (est ? ' empezado' : '') + (varias ? ' con-escalera' : '') + '" data-k="' + esc(k) + '">' +
+      '<div class="col-jug">' + foto(g) +
+        '<div class="jug-cab"><b class="nombre">' + esc(g.j) + '</b> <span class="mut">' + esc(g.eq) + (g.pos ? ', ' + esc(g.pos) : '') + ' ' + (g.loc ? 'vs' : '@') + ' ' + esc(g.riv) + '</span>' + badgeEstado(est) + '</div>' +
         '<div class="apuesta">Más de ' + fL(s.L) + ' ' + esc(lectura(g)) + (g.per ? ' (' + esc(g.per) + ')' : '') + '<span class="sr-only">. Semáforo ' + c + '.</span></div>' +
-        '<div class="mut txt-chico">' + (g.loc ? 'vs ' : '@ ') + esc(g.riv) + ' · ' + Math.round(g.min || 0) + ' min' + (g.rol ? ', ' + esc(g.rol) : '') + '</div></div>' +
-      '<div class="col-cuota"><span class="sr-only">Cuota Betano </span><span class="badge-cuota grande">' + fC(s.cu) + '</span><span class="mut txt-chico">justa ' + fC(s.ju) + '</span></div>' +
-      '<div class="col-barras">' + barras(g, s) + '<span class="mut txt-chico">Temp ' + fL(g.pt) + ' · Últ. 10 ' + fL(g.p10) + ' · Proy ' + fL(g.mu) + '</span></div>' +
-      '<div class="col-nums">' + celda('col-prob', 'Prob.', 'Probabilidad', fP(s.p)) + celda('col-r10', 'Últ. 10', 'Acierto en los últimos 10', fP(s.r10)) +
-        celda('col-rt', 'Temp.', 'Acierto en la temporada', s.rt != null ? fP(s.rt) : '—') + '</div>' +
+        '<div class="jug-meta"><span class="sr-only">Cuota </span>' + pillCuota(s.cu, true) + ' <span class="mut">·\u00a0' + Math.round(g.min || 0) + '\u00a0min' + (g.rol ? ', ' + esc(g.rol) : '') + '</span></div>' +
+      '</div>' +
+      '<div class="col-barras">' + barras(g, s) + '</div>' +
+      '<div class="col-num col-prob"><span class="sr-only">Probabilidad del modelo </span><b>' + fP(s.p) + '</b></div>' +
+      '<div class="col-num col-hit"><span class="sr-only">' + ac.largo + ' </span><b>' + (hit != null ? fP(hit) : '—') + '</b></div>' +
+      '<div class="col-acc">' +
+          (varias ? '<button type="button" class="desplegar" data-desplegar aria-expanded="' + (abierto ? 'true' : 'false') + '" aria-label="' + (abierto ? 'Ocultar las líneas de ' : 'Ver las ' + g.pasos.length + ' líneas de ') + esc(g.j) + '">' + (abierto ? 'Ocultar ▴' : g.pasos.length + ' líneas ▾') + '</button>' : '') +
+          botonMas(s.L, activo, !!est && !activo, false, g.j + ' más de ' + fL(s.L) + ' ' + lectura(g)) + '</div>' +
       (tags ? '<div class="col-flags">' + tags + '</div>' : '') +
-      '<div class="col-acc">' + botonMas(s.L, activo, !!est && !activo, false) +
-        (varias ? '<button type="button" class="desplegar" data-desplegar aria-expanded="' + (abierto ? 'true' : 'false') + '">' + (abierto ? 'Ocultar ▴' : g.pasos.length + ' líneas ▾') + '</button>' : '') + '</div>' +
       (abierto ? '<div class="l-escalera">' + escalera(g, s) + contexto(g, s) + '</div>' : '') + '</article>';
   }
 
@@ -654,7 +728,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = NbaUtil;
     var cj = legs.length ? window.Correlacion.conjunta(patas) : { indep: 1, conj: 1, correlacionadas: 0 };
     var cuota = cuotaTotal();
     return { indep: cj.indep, conj: cj.conj, corr: cj.correlacionadas, cuota: cuota,
-      impl: cuota ? 1 / cuota : null, ev: cuota ? cj.conj * cuota - 1 : null, justa: cj.conj > 0 ? 1 / cj.conj : null };
+      impl: cuota ? 1 / cuota : null, ev: cuota ? cj.conj * cuota - 1 : null };
   }
 
   function veredicto(c) {
@@ -681,7 +755,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = NbaUtil;
     return a;
   }
 
-  var etiquetaFuente = function (l) { return l.cuotaOrig != null ? (l.cuota !== l.cuotaOrig ? 'editada (' + l.fuente + ' ' + fC(l.cuotaOrig) + ')' : l.fuente) : 'sin cuota publicada · justa ' + fC(l.ju); };
+  var etiquetaFuente = function (l) { return l.cuotaOrig != null ? (l.cuota !== l.cuotaOrig ? 'editada (' + l.fuente + ' ' + fC(l.cuotaOrig) + ')' : l.fuente) : 'sin cuota publicada'; };
 
   function pintarTicket() {
     var legs = S.ticket, cont = $$('#ticket-cuerpo'), n = legs.length;
@@ -717,14 +791,13 @@ if (typeof module !== 'undefined' && module.exports) module.exports = NbaUtil;
     cont.innerHTML = '<div class="totales">' +
       '<div class="total"><span>Cuota total</span><b>' + (c.cuota ? fC(c.cuota) : '—') + '</b></div>' +
       '<div class="total"><span>Probabilidad</span><b>' + fP(c.conj) + '</b>' + corrTxt + '</div>' +
-      '<div class="total"><span>Cuota justa</span><b>' + (c.justa ? fC(c.justa) : '—') + '</b></div>' +
       '<div class="total"><span>Ventaja estimada</span><b>' + (c.ev == null ? '—' : (c.ev > 0 ? '+' : c.ev < 0 ? '−' : '') + Math.abs(Math.round(c.ev * 100)) + '%') + '</b></div>' +
       '</div>' +
       '<div class="stake"><label for="stake">Apuesta</label><input id="stake" type="text" inputmode="decimal" autocomplete="off" enterkeyhint="done" value="' + U.fMonto(S.stake) + '">' +
       '<span>' + (gan ? 'cobrarías ' + nfDin.format(gan) : '') + '</span></div>' +
       (v ? '<div class="veredicto ' + v.color + '"><b>Semáforo de la combinada: ' + v.color + '.</b> ' + esc(v.txt) + '</div>' : '') +
       (avs.length ? '<ul class="avisos-ticket">' + avs.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>' : '') +
-      '<p class="nota">Si tu casa paga más que la cuota justa, el modelo ve valor. Pero el modelo no está validado contra resultados: desconfiá de las ventajas muy altas.</p>' +
+      '<p class="nota">La ventaja estimada compara la probabilidad del modelo con la cuota total. El modelo todavía se está validando contra resultados: desconfiá de las ventajas muy altas.</p>' +
       '<div class="acciones"><button type="button" class="btn primario" id="t-guardar">Guardar</button>' +
       '<button type="button" class="btn secundario" id="t-registrar" aria-controls="registrar">Registrar apuesta</button>' +
       '<button type="button" class="btn" id="t-copiar">Copiar texto</button><button type="button" class="btn btn-peligro" id="t-limpiar">Vaciar</button></div>';
@@ -795,7 +868,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = NbaUtil;
     var uno = c.p > 0 ? Math.round(1 / c.p) : null;
     return '<article class="comb comb-' + esc(c.id) + '" aria-labelledby="' + idTit + '">' +
       '<div class="comb-cab"><h3 class="comb-tipo" id="' + idTit + '"><span class="comb-punto" aria-hidden="true"></span>' + esc(c.nombre) + '</h3><span class="comb-meta">' + c.n + ' patas · cuota ≥ ' + fC(c.T) + '</span></div>' +
-      '<div class="comb-nums"><div><b>@' + fC(c.cuota) + '</b><span>cuota total</span></div><div><b>' + fP(c.p) + '</b><span>' + (uno ? '<span class="sr-only">probabilidad: </span>1 de ' + uno : 'probabilidad') + '</span></div><div><b>' + fC(1 / c.p) + '</b><span>cuota justa</span></div></div>' +
+      '<div class="comb-nums"><div><b>@' + fC(c.cuota) + '</b><span>cuota total</span></div><div><b>' + fP(c.p) + '</b><span>' + (uno ? '<span class="sr-only">probabilidad: </span>1 de ' + uno : 'probabilidad') + '</span></div></div>' +
       '<ul class="comb-patas">' + c.legs.map(function (l) {
         var lc = color(l.s.c);
         return '<li><b>' + esc(l.g.j) + '</b> · Más de ' + fL(l.s.L) + ' ' + esc(lectura(l.g)) + '<small>' + esc(l.g.eq) + (l.g.loc ? ' vs ' : ' @ ') + esc(l.g.riv) + ' · ' + fP(l.s.p) + ' · @' + fC(l.cu) + ' Betano · <span class="dot ' + lc + '" aria-hidden="true"></span>' + lc + '</small></li>';
@@ -835,7 +908,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = NbaUtil;
     if (!libres.length) return aviso('Todos los partidos de hoy ya empezaron: no se puede armar una combinada nueva.');
     var r = U.armarCombinada(libres, { T: op.T, n: op.n, pmin: op.pmin, colores: op.colores, porJuego: op.porJuego, tipos: op.tipos, excluidos: excl }, window.Sugeridas);
     var reglas = 'probabilidad ≥ ' + fP(op.pmin) + ', ' + op.colores.join(' o ') + ', ' + op.tipos.map(function (t) { return TIPO_TXT[t]; }).join(', ') +
-      ', cuota de cada pata ≥ 1,10 y máximo ' + op.porJuego + ' por partido';
+      ', cuota de cada pata ≥ ' + fC(U.CUOTA_MIN) + ' y máximo ' + op.porJuego + ' por partido';
     var otraVez = otra && Object.keys(PROPIA.excl).length ? ' <button type="button" class="btn" data-propia="reiniciar">Volver a la primera opción</button>' : '';
     if (r.error === 'pocas') {
       return aviso(otra && Object.keys(PROPIA.excl).length ? 'No hay otra opción sin repetir los jugadores de las anteriores (' + esc(reglas) + ').'
@@ -883,11 +956,11 @@ if (typeof module !== 'undefined' && module.exports) module.exports = NbaUtil;
   function metodo() {
     var m = S.data.modelo || {};
     $$('#metodo').innerHTML =
-      '<h4>De dónde salen los datos</h4><p>Líneas, promedios, minutos, lesiones y cuotas de Betano (con su escalera de líneas «más de»): <a href="https://ludoprops.com" rel="noopener">LudoProps</a>. Spread, total y moneyline: ESPN (DraftKings). Back-to-back: calendario de ESPN de los 3 días previos. <b>Stake no tiene API pública</b>: editá la cuota de cada pata en la combinada y compará con la <b>cuota justa</b>.</p>' +
-      '<h4>Escalera de líneas</h4><p>Solo se muestran líneas con <b>cuota de Betano</b>. En puntos, rebotes y asistencias se baja la escalera completa que publica Betano (unas 6 líneas por jugador); en los demás mercados, solo la línea principal. Betano no publica líneas muy bajas, props de jugadores con pocos minutos ni algunos mercados (tiros, pérdidas, rebotes ofensivos y defensivos, primer cuarto). La <b>cuota justa</b> (1 / probabilidad) sirve para comparar con otra casa, como Stake.</p>' +
+      '<h4>De dónde salen los datos</h4><p>Líneas, promedios, minutos, lesiones y cuotas de Betano (con su escalera de líneas «más de»): <a href="https://ludoprops.com" rel="noopener">LudoProps</a>. Spread, total y moneyline: ESPN (DraftKings). Back-to-back: calendario de ESPN de los 3 días previos. <b>Stake no tiene API pública</b>: si apostás ahí, editá la cuota de cada pata en la combinada.</p>' +
+      '<h4>Escalera de líneas</h4><p>Solo se muestran líneas con <b>cuota de Betano de al menos ' + fC(U.CUOTA_MIN) + '</b>: las que pagan menos casi no suman a una combinada. En puntos, rebotes y asistencias se baja la escalera completa que publica Betano (unas 6 líneas por jugador); en los demás mercados, solo la línea principal. Betano no publica líneas muy bajas, props de jugadores con pocos minutos ni algunos mercados (tiros, pérdidas, rebotes ofensivos y defensivos, primer cuarto).</p>' +
       '<h4>Probabilidad de cada línea</h4><p>El <b>modelo</b> promedia la estimación del sitio (proyección de minutos y rol) y una propia (proyección ± variabilidad de los últimos 10 partidos, con distribución binomial negativa para cifras bajas). Antes se ajusta por <b>riesgo de blowout</b> (spread → probabilidad de que el margen supere ' + fL(m.umbral_blowout || 14.5) + ' puntos → minutos que pierden los titulares) y por <b>back-to-back</b>. Cuando la línea tiene cuota, el resultado final es el <b>promedio entre el modelo y la probabilidad de la casa</b> sin su margen. Las líneas donde el modelo supera a la casa por más de 20 puntos se marcan.</p>' +
       '<h4>Semáforo (por línea)</h4><ul><li><b>Verde:</b> probabilidad ≥ 60%, promedios de temporada, últimos 10 y proyección por encima de la línea (≥ 4%), tasas de acierto a favor y ninguna en contra, ≥ 24 minutos, minutos estables, sin lesión y sin riesgo alto de blowout ni back-to-back (salvo que la línea sea muy segura).</li><li><b>Amarillo:</b> probabilidad ≥ 55% con casi todo a favor, pero con una alerta.</li><li><b>Rojo:</b> el resto. Automático si el jugador figura con cualquier estado de lesión que no sea Probable (Questionable, Doubtful, Out…), el sitio lo marca «no sugerir» o juega pocos minutos.</li></ul>' +
-      '<h4>Combinadas sugeridas</h4><p><b>Segura</b> (3 y 4 patas, cuota ≥ 1,99), <b>Intermedia</b> (4 y 5 patas, cuota ≥ 5) y <b>Soñadora</b> (7 patas, cuota ≥ 20). Para cada una se resuelve un problema de mochila: elegir las patas «más de» que maximizan la probabilidad conjunta con la cuota mínima, con un jugador por pata y solo líneas con cuota publicada, modelo completo, sin jugadores dudosos y de partidos que no empezaron. La Segura usa solo líneas verdes de al menos 72%; la Intermedia, verdes y amarillas de al menos 60%; la Soñadora, de al menos 50%. Ninguna línea supera 96% porque siempre queda un riesgo que las estadísticas no ven.</p>' +
+      '<h4>Combinadas sugeridas</h4><p><b>Segura</b> (3 y 4 patas, cuota ≥ 1,99), <b>Intermedia</b> (4 y 5 patas, cuota ≥ 5) y <b>Soñadora</b> (7 patas, cuota ≥ 20). Para cada una se resuelve un problema de mochila: elegir las patas «más de» que maximizan la probabilidad conjunta con la cuota mínima, con un jugador por pata y solo líneas con cuota de al menos ' + fC(U.CUOTA_MIN) + ', modelo completo, sin jugadores dudosos y de partidos que no empezaron. La Segura usa solo líneas verdes de al menos 72%; la Intermedia, verdes y amarillas de al menos 60%; la Soñadora, de al menos 50%. Ninguna línea supera 96% porque siempre queda un riesgo que las estadísticas no ven.</p>' +
       '<h4>Combinadas</h4><p>La probabilidad conjunta usa una cópula gaussiana: patas del mismo jugador se tratan como correlacionadas y las del mismo partido con una correlación leve. Entre partidos distintos se asumen independientes. Dos patas del mismo partido se calculan de forma exacta (normal bivariada); tres o más, con una simulación de semilla fija. Una línea muy segura paga poco: la cuota total es el producto de las cuotas.</p>' +
       '<h4>Partidos empezados</h4><p>Cuando un partido ya empezó, su tarjeta y sus líneas dicen «En juego» o «Final». Sus líneas no se pueden sumar a la combinada y no entran en las sugeridas, porque las cuotas publicadas son de antes del inicio.</p>' +
       '<h4>Límites</h4><ul><li>Las probabilidades recién se empiezan a <b>contrastar con resultados</b>: cada día se guarda una foto pre-partido y, cuando terminan los partidos, se corrige. Lo ves en <a href="#/resultados">Resultados y calibración</a>; con pocos días no se puede sacar ninguna conclusión.</li><li>Muestra chica: estamos a pocos partidos del inicio de temporada.</li><li>El defensa-por-posición se muestra solo como contexto: hay poca evidencia de que prediga.</li><li>Las lesiones cambian hasta minutos antes del partido. Verificá antes de apostar.</li><li>Esto es análisis estadístico, no una garantía ni consejo financiero. Apostá solo lo que puedas perder.</li></ul>';
@@ -1002,15 +1075,27 @@ if (typeof module !== 'undefined' && module.exports) module.exports = NbaUtil;
       aplicarFiltros();
     });
 
+    var desplegar = function (k) {
+      if (S.abiertos.has(k)) S.abiertos.delete(k); else S.abiertos.add(k);
+      repintarFilas([k]);
+    };
     $$('#lineas').addEventListener('click', function (e) {
       var art = e.target.closest('.linea'); if (!art) return;
       var g = S.porClave.get(art.dataset.k); if (!g) return;
-      if (e.target.closest('[data-desplegar]')) {
-        if (S.abiertos.has(art.dataset.k)) S.abiertos.delete(art.dataset.k); else S.abiertos.add(art.dataset.k);
-        repintarFilas([art.dataset.k]); return;
-      }
-      var b = e.target.closest('.add'); if (!b || b.disabled) return;
-      alternar(g, parseFloat(b.dataset.l), b.dataset.add);
+      if (e.target.closest('[data-desplegar]')) { desplegar(art.dataset.k); return; }
+      var b = e.target.closest('.add');
+      if (b) { if (!b.disabled) alternar(g, parseFloat(b.dataset.l), b.dataset.add); return; }
+      // tocar la fila (fuera de botones y de la escalera abierta) también abre o cierra la escalera;
+      // el botón «N líneas ▾» es el acceso de teclado y de lector de pantalla
+      var sel = window.getSelection ? String(window.getSelection()) : '';
+      if (g.pasos.length > 1 && !sel && !e.target.closest('button, a, input, select, label, .l-escalera')) desplegar(art.dataset.k);
+    });
+    $$('#lineas').addEventListener('error', fotoFallida, true);      // los errores de <img> no burbujean: se escuchan en captura
+    $$('#f-acierto').addEventListener('change', function (e) {
+      S.acierto = ACIERTO[e.target.value] ? e.target.value : 'r10';
+      guardar(CLAVE_ACIERTO, S.acierto); marcarAcierto();
+      if (S.vista === 'lineas' && !S.sucio.filtro) pintarLista(); else S.sucio.filtro = true;
+      anunciar('Última columna: ' + ACIERTO[S.acierto].largo.toLowerCase() + '.');
     });
 
     // Navegación: los enlaces cambian el hash solos; acá solo los casos especiales.

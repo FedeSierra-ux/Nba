@@ -7,11 +7,11 @@
   'use strict';
 
   var NIVELES = [
-    { id: 'segura', nombre: 'Segura', T: 1.99, variantes: [3, 4], colores: ['verde'], pmin: 0.72, cmin: 1.12, porJuego: 1, porMercado: 2,
+    { id: 'segura', nombre: 'Segura', T: 1.99, variantes: [3, 4], colores: ['verde'], pmin: 0.72, cmin: 1.30, porJuego: 1, porMercado: 2,
       resumen: 'Solo líneas verdes de probabilidad alta, una pata por partido. Para revisar lo más seguro del día.' },
-    { id: 'intermedia', nombre: 'Intermedia', T: 5, variantes: [4, 5], colores: ['verde', 'amarillo'], pmin: 0.60, cmin: 1.15, porJuego: 2, porMercado: 3,
+    { id: 'intermedia', nombre: 'Intermedia', T: 5, variantes: [4, 5], colores: ['verde', 'amarillo'], pmin: 0.60, cmin: 1.30, porJuego: 2, porMercado: 3,
       resumen: 'Verdes y amarillas con buen respaldo estadístico: más cuota, más riesgo.' },
-    { id: 'sonadora', nombre: 'Soñadora', T: 20, variantes: [7], colores: ['verde', 'amarillo'], pmin: 0.50, cmin: 1.25, porJuego: 2, porMercado: 3,
+    { id: 'sonadora', nombre: 'Soñadora', T: 20, variantes: [7], colores: ['verde', 'amarillo'], pmin: 0.50, cmin: 1.30, porJuego: 2, porMercado: 3,
       resumen: 'Poco probable, pero cada pata tiene respaldo en promedios, minutos y contexto. Para jugar un poco: apostá poco.' }
   ];
 
@@ -25,7 +25,7 @@
       if (g.est && g.est !== 'Probable') return;                         // cualquier estado de lesión salvo Probable queda fuera
       g.pasos.forEach(function (s) {
         var cu = cuotaDe(s);
-        if (cu == null || cu < nivel.cmin) return;                       // sin patas de relleno que no aportan cuota
+        if (cu == null || cu < nivel.cmin) return;                       // sin patas de relleno: ninguna línea que pague menos de 1,30
         if (nivel.colores.indexOf(s.c) < 0 || s.p < nivel.pmin) return;
         out.push({ g: g, s: s, cu: cu, lp: Math.log(s.p), lc: Math.log(cu) });
       });
@@ -57,14 +57,44 @@
   }
   var suma = function (legs, k) { return legs.reduce(function (a, x) { return a + x[k]; }, 0); };
 
+  /* Búsqueda exhaustiva con poda (ramificación y cota) para cuando la voraz no encuentra n patas que entren juntas.
+     Pasa con pocas candidatas (por ejemplo, con la cuota mínima de 1,30): la voraz toma las de cuota más alta, las reglas por
+     partido y por mercado dejan afuera al resto y no ve la combinación que sí existe. presupuesto = nodos máximos a visitar. */
+  function exhaustiva(pool, n, nivel, T, presupuesto) {
+    var orden = pool.slice().sort(function (a, b) { return b.lp - a.lp || b.lc - a.lc; });
+    var lcs = pool.map(function (x) { return x.lc; }).sort(function (a, b) { return b - a; }), topLc = [0];
+    for (var i = 0; i < n && i < lcs.length; i++) topLc.push(topLc[i] + lcs[i]);
+    var mejor = null, mejorLp = -Infinity, nodos = 0, legs = [];
+    (function dfs(desde, lp, lc) {
+      if (++nodos > presupuesto) return;
+      if (legs.length === n) { if (lc >= T - 1e-12 && lp > mejorLp + 1e-12) { mejorLp = lp; mejor = legs.slice(); } return; }
+      var faltan = n - legs.length;
+      if (orden.length - desde < faltan || lc + topLc[faltan] < T - 1e-12) return;   // ni con las cuotas más altas llega
+      for (var k = desde; k <= orden.length - faltan; k++) {
+        var cota = lp;                                                    // ordenadas por probabilidad: lo mejor posible desde k
+        for (var j = 0; j < faltan; j++) cota += orden[k + j].lp;
+        if (cota <= mejorLp + 1e-12) return;
+        var x = orden[k];
+        if (!cabe(legs, x, nivel, -1)) continue;
+        legs.push(x); dfs(k + 1, lp + x.lp, lc + x.lc); legs.pop();
+        if (nodos > presupuesto) return;
+      }
+    })(0, 0, 0);
+    return mejor;
+  }
+
   /* Mejor combinación de n patas con cuota total ≥ T. Devuelve null si no hay con los datos de hoy. */
   function optimizar(pool, n, nivel) {
     var T = Math.log(nivel.T), lo = 0, hi = 80;
     var mejor = seleccionar(pool, n, hi, nivel);
-    if (mejor.length < n || suma(mejor, 'lc') < T) return null;
-    for (var it = 0; it < 50 && hi - lo > 1e-6; it++) {   // ~27 iteraciones en vez de 50: el resultado no cambia (verificado con datos reales y 800 escenarios perturbados)
-      var mid = (lo + hi) / 2, legs = seleccionar(pool, n, mid, nivel);
-      if (legs.length === n && suma(legs, 'lc') >= T) { mejor = legs; hi = mid; } else { lo = mid; }
+    if (mejor.length < n || suma(mejor, 'lc') < T) {
+      mejor = exhaustiva(pool, n, nivel, T, 300000);
+      if (!mejor) return null;
+    } else {
+      for (var it = 0; it < 50 && hi - lo > 1e-6; it++) {   // ~27 iteraciones en vez de 50: el resultado no cambia (verificado con datos reales y 800 escenarios perturbados)
+        var mid = (lo + hi) / 2, legs = seleccionar(pool, n, mid, nivel);
+        if (legs.length === n && suma(legs, 'lc') >= T) { mejor = legs; hi = mid; } else { lo = mid; }
+      }
     }
     // mejora local: reemplazar una pata por otra candidata si sigue alcanzando la cuota y sube la probabilidad
     var mejora = true, pasadas = 0;

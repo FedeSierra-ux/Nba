@@ -3,7 +3,8 @@
 //   python3 -m http.server 8776 -d docs &          (en otra terminal)
 //   PORT=8776 NODE_PATH=$(npm root -g) node tests/e2e.js
 // Opcional: SHOTS=/ruta/a/carpeta guarda una captura de cada sección (celular y escritorio).
-// No baja nada de internet: las variantes de datos (partidos empezados, datos regenerados, XSS) se sirven con page.route.
+// No baja nada de internet: las variantes de datos (partidos empezados, datos regenerados, XSS) se sirven con page.route,
+// y las fotos del CDN de la NBA se responden con un PNG de 1×1 (o con 404, en la prueba de las iniciales).
 'use strict';
 const { chromium } = require('playwright');
 const assert = require('node:assert');
@@ -13,8 +14,13 @@ const path = require('node:path');
 const BASE = `http://localhost:${process.env.PORT || 8776}/`;
 const SHOTS = process.env.SHOTS || '';
 const DATOS = JSON.parse(fs.readFileSync(path.join(__dirname, '../docs/data/hoy.json'), 'utf8'));
-const CL_TICKET = 'nba_semaforo_ticket_v2', CL_GUARDADAS = 'nba_semaforo_guardadas_v2';
-const GRUPOS = DATOS.grupos.filter((g) => g.pasos && g.pasos.length && !['oreb', 'dreb'].includes(g.m));
+const CL_TICKET = 'nba_semaforo_ticket_v2', CL_GUARDADAS = 'nba_semaforo_guardadas_v2', CL_ACIERTO = 'nba_semaforo_acierto_v1';
+const U = require('../docs/app.js');
+// lo mismo que la página: sin oreb/dreb y sin líneas que paguen menos de 1,30 (con la recomendada recalculada)
+const GRUPOS = U.filtrarCuotaMin(DATOS.grupos.filter((g) => g.pasos && g.pasos.length && !['oreb', 'dreb'].includes(g.m)));
+const FOTOS = /cdn\.nba\.com\/headshots\//;
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+const numAR = (t) => parseFloat(String(t).replace(/[^\d,]/g, '').replace(',', '.'));
 const clon = () => JSON.parse(JSON.stringify(DATOS));
 const gkey = (g) => g.id + '|' + g.m + '|' + (g.per || '');
 
@@ -74,7 +80,6 @@ async function rutasResultados(q) {
 const apuestasGuardadas = (p) => p.evaluate((k) => JSON.parse(localStorage.getItem(k) || '[]'), CL_APUESTAS);
 const estadoApuesta = (p, id) => p.textContent(`#apuestas .apu[data-id="${id}"] .estado-apu`);
 const patasDeTicket = (gs) => gs.map(([g, s]) => ({ key: gkey(g) + '|' + s.L + '|mas', gkey: gkey(g), id: g.id, j: g.j, eq: g.eq, riv: g.riv, loc: g.loc, gid: g.gid, m: g.m, mn: g.mn, L: s.L, lado: 'mas', cuota: s.cu, cuotaOrig: s.cu, fuente: 'Betano', p: s.p, c: s.c, ju: s.ju, est: g.est, fl: [] }));
-const U = require('../docs/app.js');
 
 (async () => {
   const browser = await chromium.launch();
@@ -83,6 +88,7 @@ const U = require('../docs/app.js');
   // ====================================================================== CELULAR 390×844
   const movil = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2, locale: 'es-AR', acceptDownloads: true });
   await movil.route(ESPN, (r) => r.fulfill({ json: espnEstado('pre') }));   // nunca sale a ESPN: «por empezar» salvo que la prueba diga otra cosa
+  await movil.route(FOTOS, (r) => r.fulfill({ status: 200, contentType: 'image/png', body: PNG }));
   let p = await nuevaPagina(movil, errores, 'móvil');
 
   await paso('móvil: arranca en Partidos, sin pintar Líneas ni robar el foco', async () => {
@@ -797,9 +803,153 @@ const U = require('../docs/app.js');
     await q.close();
   });
 
+  // ====================================================================== v0.6.1 (celular)
+  await paso('móvil: fila estilo LudoProps: cabecera visible, foto, una sola fila con gráfico, Modelo y acierto', async () => {
+    const q = await nuevaPagina(movil, errores, 'móvil-fila');
+    await ir(q); await q.evaluate(() => localStorage.clear());
+    await ir(q, '#/lineas');
+    const cab = await q.$$eval('.cab-tabla > *', (e) => e.map((x) => ({ txt: x.textContent.replace(/\s+/g, ' ').trim(), vis: getComputedStyle(x).display !== 'none' && x.getBoundingClientRect().width > 0 })));
+    assert.deepStrictEqual(cab.map((x) => x.txt.split(' Últimos')[0]), ['Jugador', 'Últimos 10', 'Modelo', 'Últ. 10 ▾']);
+    assert.ok(cab.every((x) => x.vis), 'la cabecera se ve en el celular');
+    const f = await q.evaluate(() => {
+      const r = document.querySelector('#lineas .linea'), box = (s) => r.querySelector(s).getBoundingClientRect();
+      const img = r.querySelector('.foto');
+      return { foto: [img.tagName, img.getAttribute('loading'), img.getAttribute('decoding'), img.getAttribute('alt'), img.getAttribute('width'), img.getAttribute('height'), Math.round(box('.foto').width)],
+        src: img.getAttribute('src'), cargada: img.complete && img.naturalWidth > 0,
+        jug: box('.col-jug'), barras: box('svg.mini'), prob: box('.col-prob'), hit: box('.col-hit'),
+        pill: r.querySelector('.jug-meta .pill-cuota').textContent, meta: r.querySelector('.jug-meta').textContent };
+    });
+    assert.deepStrictEqual(f.foto.slice(0, 6), ['IMG', 'lazy', 'async', '', '44', '44']);
+    assert.ok(f.foto[6] >= 40 && f.foto[6] <= 56, 'foto de 40–56 px: ' + f.foto[6]);
+    assert.match(f.src, /^https:\/\/cdn\.nba\.com\/headshots\/nba\/latest\/260x190\/\d+\.png$/);
+    assert.ok(f.cargada, 'la foto cargó (PNG de la prueba)');
+    // una sola fila horizontal: gráfico, Modelo y acierto a la derecha del bloque del jugador, en el mismo renglón
+    assert.ok(f.barras.left >= f.jug.right - 1 && f.prob.left >= f.barras.right - 1 && f.hit.left >= f.prob.right - 1, JSON.stringify(f));
+    assert.ok(Math.abs(f.barras.top - f.jug.top) < 40 && Math.abs(f.prob.top - f.barras.top) < 40, 'misma altura');
+    assert.ok(f.barras.width >= 115 && f.barras.width <= 135, 'gráfico ≈ 120–130 px: ' + f.barras.width);
+    assert.match(f.pill, /^Betano \d+,\d\d$/); assert.match(f.meta, /·\s\d+\smin/);
+    await sinScrollHorizontal(q, 'Líneas (fila nueva)');
+    // tocar la fila abre la escalera; tocarla de nuevo la cierra
+    const fila = q.locator('#lineas .linea.con-escalera').first(), k = await fila.getAttribute('data-k');
+    await q.click(`#lineas .linea[data-k="${k}"] .col-barras`); await esperar(q);
+    assert.strictEqual(await q.getAttribute(`#lineas .linea[data-k="${k}"] [data-desplegar]`, 'aria-expanded'), 'true');
+    assert.strictEqual(await q.locator(`#lineas .linea[data-k="${k}"] .escalera`).count(), 1);
+    const cols = await q.$$eval(`#lineas .linea[data-k="${k}"] .escalera thead th`, (t) => t.map((x) => x.textContent.trim()));
+    assert.deepStrictEqual(cols, ['Línea', 'Betano', 'Prob.', 'Últ. 10', 'Temp.', 'Agregar']);
+    await q.click(`#lineas .linea[data-k="${k}"] .apuesta`); await esperar(q);
+    assert.strictEqual(await q.getAttribute(`#lineas .linea[data-k="${k}"] [data-desplegar]`, 'aria-expanded'), 'false');
+    // barras de la temporada pasada (más apagadas): tantas como ult.length − n
+    const g = GRUPOS.find((x) => x.ult && x.ult.length === 10 && x.n < 10 && x.pasos.some((s) => s.c !== 'rojo'));
+    if (g) {
+      await q.selectOption('#f-prob', 'rec'); await q.click('#f-color [data-c="rojo"]'); await q.fill('#f-q', g.j); await esperar(q, 300);
+      const prev = await q.locator(`#lineas .linea[data-k="${gkey(g)}"] svg.mini rect.prev`).count();
+      assert.strictEqual(prev, 10 - g.n);
+    }
+    await q.close();
+  });
+
+  await paso('móvil: la cabecera «Últ. 10 ▾» cambia la última columna a la temporada y se recuerda', async () => {
+    const q = await nuevaPagina(movil, errores, 'móvil-acierto');
+    await ir(q); await q.evaluate(() => localStorage.clear());
+    await ir(q, '#/lineas');
+    const leer = () => q.$$eval('#lineas .linea', (rs) => rs.slice(0, 15).map((r) => ({ k: r.dataset.k, L: +r.querySelector('.col-acc [data-add]').dataset.l, v: r.querySelector('.col-hit b').textContent, sr: r.querySelector('.col-hit .sr-only').textContent })));
+    const esperado = (x, campo) => { const g = GRUPOS.find((y) => gkey(y) === x.k), s = g.pasos.find((y) => y.L === x.L); return s[campo] != null ? U.fP(s[campo]) : '—'; };
+    let filas = await leer();
+    filas.forEach((x) => { assert.strictEqual(x.v, esperado(x, 'r10'), x.k); assert.match(x.sr, /últimos 10/); });
+    await q.focus('#f-acierto'); await q.selectOption('#f-acierto', 'rt'); await esperar(q);
+    assert.strictEqual(await q.textContent('#f-acierto-txt'), 'Temp.');
+    filas = await leer();
+    filas.forEach((x) => { assert.strictEqual(x.v, esperado(x, 'rt'), x.k); assert.match(x.sr, /temporada/); });
+    assert.ok(filas.some((x) => x.v !== esperado(x, 'r10')), 'la columna cambió');
+    assert.strictEqual(await q.evaluate((k) => localStorage.getItem(k), CL_ACIERTO), '"rt"');
+    assert.strictEqual(await q.evaluate(() => document.activeElement.id), 'f-acierto', 'el foco sigue en el selector');
+    await ir(q, '#/lineas');
+    assert.strictEqual(await q.inputValue('#f-acierto'), 'rt', 'se recuerda al recargar');
+    assert.strictEqual((await leer())[0].v, esperado((await leer())[0], 'rt'));
+    // localStorage con basura: vuelve a «Últ. 10»
+    await q.evaluate((k) => localStorage.setItem(k, '"xx'), CL_ACIERTO);
+    await ir(q, '#/lineas');
+    assert.strictEqual(await q.inputValue('#f-acierto'), 'r10');
+    await q.evaluate(() => localStorage.clear());
+    await q.close();
+  });
+
+  await paso('móvil: si la foto no carga (404), se ven las iniciales en un círculo, sin ícono roto', async () => {
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2, locale: 'es-AR' });
+    await ctx.route(ESPN, (r) => r.fulfill({ json: espnEstado('pre') }));
+    await ctx.route(FOTOS, (r) => r.fulfill({ status: 404, contentType: 'text/plain', body: 'no' }));
+    const propios = [];
+    const q = await ctx.newPage();
+    q.on('pageerror', (e) => errores.push('móvil-sin-foto pageerror: ' + e.message));
+    q.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) propios.push(m.text()); });   // el 404 de la foto es esperado
+    await ir(q, '#/lineas');
+    await q.waitForSelector('#lineas .linea:nth-child(1) .foto-ini');
+    await q.waitForFunction(() => [...document.querySelectorAll('#lineas .linea')].slice(0, 3).every((r) => r.querySelector('.foto-ini')));
+    const r = await q.$$eval('#lineas .linea', (rs) => rs.slice(0, 3).map((x) => {
+      const f = x.querySelector('.foto-ini'), cs = getComputedStyle(f), b = f.getBoundingClientRect();
+      return { nombre: x.querySelector('.nombre').textContent, ini: f.textContent, radio: cs.borderRadius, w: Math.round(b.width), h: Math.round(b.height), img: x.querySelectorAll('img').length, oculto: f.getAttribute('aria-hidden') };
+    }));
+    r.forEach((x) => {
+      assert.strictEqual(x.ini, U.iniciales(x.nombre)); assert.strictEqual(x.img, 0, 'sin <img> roto');
+      assert.strictEqual(x.radio, '50%'); assert.strictEqual(x.w, 44); assert.strictEqual(x.h, 44); assert.strictEqual(x.oculto, 'true');
+    });
+    // al repintar la fila (abrir la escalera) no vuelve a pedir la foto: directamente las iniciales
+    await q.click('#lineas .linea:nth-child(1) .col-barras'); await esperar(q);
+    assert.strictEqual(await q.locator('#lineas .linea:nth-child(1) img').count(), 0);
+    await q.locator('#lineas .linea:nth-child(1) .col-jug').screenshot({ path: SHOTS ? path.join(SHOTS, 'm-foto-iniciales.png') : path.join(require('node:os').tmpdir(), 'nba-foto.png') });
+    assert.deepStrictEqual(propios, []);
+    await ctx.close();
+  });
+
+  await paso('móvil: ninguna línea paga menos de 1,30 (filas, escaleras, sugeridas y armá tu combinada)', async () => {
+    const q = await nuevaPagina(movil, errores, 'móvil-cuota-min');
+    await ir(q); await q.evaluate(() => localStorage.clear());
+    await ir(q, '#/lineas');
+    await q.selectOption('#f-prob', '0.55'); await q.click('#f-color [data-c="rojo"]'); await esperar(q);
+    await abrirMasFiltros(q); await q.selectOption('#f-orden', 'p'); await q.check('#f-menos'); await esperar(q);   // las más probables son las de cuota más baja
+    const ks = await q.$$eval('#lineas .linea.con-escalera', (r) => r.slice(0, 12).map((x) => x.dataset.k));
+    for (const k of ks) await q.click(`#lineas .linea[data-k="${k}"] [data-desplegar]`);
+    await esperar(q, 200);
+    const cuotas = await q.$$eval('#lineas .pill-cuota b', (b) => b.map((x) => x.textContent));
+    assert.ok(cuotas.length > 40, 'filas y escaleras: ' + cuotas.length);
+    cuotas.forEach((c) => assert.ok(numAR(c) >= 1.3, 'cuota ' + c));
+    // en los datos de prueba sí hay líneas de menos de 1,30: la página las saca
+    assert.ok(DATOS.grupos.some((g) => g.pasos.some((s) => s.cu < 1.3)), 'el hoy.json de prueba trae cuotas bajas');
+    const min = Math.min(...GRUPOS.flatMap((g) => g.pasos.map((s) => s.cu)));
+    assert.ok(min >= 1.3, 'mínimo ' + min);
+    await ir(q, '#/sugeridas');
+    const sug = await q.$$eval('#sug-dia .comb-patas small', (e) => e.map((x) => x.textContent.match(/@([\d,]+) Betano/)[1]));
+    assert.ok(sug.length >= 3);
+    sug.forEach((c) => assert.ok(numAR(c) >= 1.3, 'sugerida @' + c));
+    await q.fill('#a-cuota', '2'); await q.selectOption('#a-n', '2'); await q.selectOption('#a-pmin', '0.8'); await q.click('#armar .armar-btn'); await esperar(q, 300);
+    const arm = await q.$$eval('#armar-res .comb-patas small', (e) => e.map((x) => x.textContent.match(/@([\d,]+) Betano/)[1]));
+    if (arm.length) arm.forEach((c) => assert.ok(numAR(c) >= 1.3, 'armá @' + c));
+    assert.match(await q.textContent('#armar-res'), /cuota de cada pata ≥ 1,30/);
+    await q.evaluate(() => localStorage.clear());
+    await q.close();
+  });
+
+  await paso('móvil: no queda «cuota justa» en ninguna sección', async () => {
+    const q = await nuevaPagina(movil, errores, 'móvil-sin-justa');
+    await ir(q); await q.evaluate(() => localStorage.clear());
+    const justa = /\bjustas?\b/i;
+    const sinJusta = async (donde) => { const t = await q.evaluate(() => document.body.innerText); assert.ok(!justa.test(t), donde + ': ' + (t.match(/.{0,40}\bjusta.{0,40}/i) || [''])[0]); };
+    await ir(q, '#/lineas');
+    await q.click('#lineas .linea.con-escalera [data-desplegar]'); await esperar(q);
+    await sinJusta('Líneas con escalera');
+    await q.click('#lineas .linea:nth-child(1) .col-acc .add'); await q.click('#lineas .linea:nth-child(2) .col-acc .add'); await esperar(q);
+    await ir(q, '#/sugeridas'); await q.click('#armar .armar-btn'); await esperar(q, 300); await sinJusta('Sugeridas y armá');
+    await q.click('#nav-secciones a[data-vista="combinada"]'); await esperar(q); await sinJusta('Combinada');
+    assert.deepStrictEqual(await q.$$eval('#t-totales .total span', (s) => s.map((x) => x.textContent)), ['Cuota total', 'Probabilidad', 'Ventaja estimada']);
+    for (const v of ['metodo', 'resultados', 'apuestas', 'partidos']) { await ir(q, '#/' + v); await esperar(q, 200); await sinJusta(v); }
+    await q.evaluate(() => localStorage.clear());
+    await q.close();
+  });
+
   // ====================================================================== ESCRITORIO 1360×900
   const escritorio = await browser.newContext({ viewport: { width: 1360, height: 900 }, locale: 'es-AR' });
   await escritorio.route(ESPN, (r) => r.fulfill({ json: espnEstado('pre') }));
+  await escritorio.route(FOTOS, (r) => r.fulfill({ status: 200, contentType: 'image/png', body: PNG }));
   const e = await nuevaPagina(escritorio, errores, 'escritorio');
 
   await paso('escritorio: pestañas arriba, sin pestaña Combinada; columna siempre visible', async () => {

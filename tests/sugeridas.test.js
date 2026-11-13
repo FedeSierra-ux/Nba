@@ -69,11 +69,42 @@ test('descarta dudosos, modelo básico y líneas sin cuota', () => {
   [1, 2, 3].forEach((id) => assert.ok(!pool.some((x) => x.g.id === id), `no debería incluir al jugador ${id}`));
 });
 
-test('ninguna pata es de relleno: cada una cumple la cuota mínima de su nivel', () => {
+test('ninguna pata es de relleno: cada una cumple la cuota mínima de su nivel (1,30 en los tres)', () => {
+  S.NIVELES.forEach((n) => assert.strictEqual(n.cmin, 1.3, n.id));
   S.todas(grupos()).forEach((c) => {
     const nivel = S.NIVELES.find((x) => x.id === c.id);
     c.legs.forEach((l) => assert.ok(l.cu >= nivel.cmin, `${c.nombre}: pata @${l.cu} < ${nivel.cmin}`));
   });
+});
+
+test('con patas de 1,30 o más la Segura llega a 1,99 con 3 patas', () => {
+  // la línea de p 0,9 paga 1,18 (no entra); la de p 0,8 paga 1,33: 1,33³ = 2,35 ≥ 1,99
+  const segura = S.todas(grupos()).filter((c) => c.id === 'segura');
+  assert.ok(segura.some((c) => c.n === 3));
+  segura.forEach((c) => c.legs.forEach((l) => assert.ok(l.cu >= 1.3)));
+});
+
+test('con pocas candidatas encuentra la combinada que la voraz no ve (reglas por partido y por mercado)', () => {
+  // como el 13/11 con cuota mínima 1,30: las de cuota más alta comparten partido o mercado; la única Segura válida mezcla mercados
+  const g = (id, gid, m, cu, p) => ({ id, j: 'J' + id, eq: 'E', riv: 'R', gid, m, mod: 'completo', est: null, pasos: [{ L: 9.5, cu, p, c: 'verde' }] });
+  const gs = [g(1, 'a', 'pts', 1.40, 0.725), g(2, 'b', 'pts', 1.39, 0.737), g(3, 'c', 'pts', 1.39, 0.727), g(4, 'b', 'pts', 1.36, 0.727),
+    g(5, 'a', 'ast', 1.32, 0.726), g(6, 'd', 'pts', 1.31, 0.746)];
+  const segura = S.todas(gs).filter((c) => c.id === 'segura');
+  assert.strictEqual(segura.length, 1, 'una Segura de 3 patas (no alcanzan para 4)');
+  const c = segura[0], cuota = c.legs.reduce((a, l) => a * l.cu, 1);
+  assert.ok(cuota >= 1.99, 'cuota ' + cuota);
+  assert.strictEqual(new Set(c.legs.map((l) => l.g.gid)).size, 3, 'una por partido');
+  assert.ok(c.legs.filter((l) => l.g.m === 'pts').length <= 2, 'máximo 2 por mercado');
+  // es la de mayor probabilidad entre todas las válidas (fuerza bruta)
+  const nivel = S.NIVELES[0], pool = S.candidatas(gs, nivel, {});
+  let mejor = -Infinity;
+  for (let a = 0; a < pool.length; a++) for (let b = a + 1; b < pool.length; b++) for (let d = b + 1; d < pool.length; d++) {
+    const t = [pool[a], pool[b], pool[d]];
+    if (new Set(t.map((x) => x.g.gid)).size < 3 || t.filter((x) => x.g.m === 'pts').length > 2) continue;
+    if (t.reduce((s, x) => s * x.cu, 1) < 1.99) continue;
+    mejor = Math.max(mejor, t.reduce((s, x) => s * x.s.p, 1));
+  }
+  assert.ok(Math.abs(c.legs.reduce((s, l) => s * l.s.p, 1) - mejor) < 1e-12);
 });
 
 test('devuelve vacío si no se puede alcanzar la cuota', () => {
@@ -91,4 +122,5 @@ test('con los datos reales (si existen) toda combinada armada cumple su cuota m�
   const d = JSON.parse(fs.readFileSync(path.join(__dirname, '../docs/data/hoy.json'), 'utf8'));
   const res = S.todas(d.grupos);
   res.forEach((c) => assert.ok(c.legs.reduce((a, l) => a * l.cu, 1) >= c.T));
+  res.forEach((c) => c.legs.forEach((l) => assert.ok(l.cu >= 1.3, `${c.nombre}: @${l.cu}`)));
 });

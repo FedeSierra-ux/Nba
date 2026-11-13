@@ -1,4 +1,4 @@
-/* NBA Semáforo v0.6.0 */
+/* NBA Semáforo v0.6.1 */
 :root {
   --fondo: #0e1116; --panel: #161b22; --panel2: #1c232d; --borde: #2a3441; --texto: #e8edf3; --suave: #93a1b3;
   --borde-ctl: #627189;            /* contorno de controles: 3,5:1 sobre --panel, 3,2:1 sobre --panel2 (WCAG 1.4.11) */
@@ -24,7 +24,7 @@ h2[tabindex="-1"]:focus { outline: none; }
 h2[tabindex="-1"]:focus-visible { outline: 2px solid var(--azul); outline-offset: 4px; border-radius: 4px; }
 .mut { color: var(--suave); }
 .txt-chico { font-size: var(--fs-xs); }
-.col-num, .badge-cuota, .escalera td, .total b, .comb-nums b, .btn-ticket, .p-datos .tag, .contador, .sem i { font-variant-numeric: tabular-nums; }
+.col-num, .pill-cuota, .escalera td, .total b, .comb-nums b, .btn-ticket, .p-datos .tag, .contador, .sem i { font-variant-numeric: tabular-nums; }
 
 /* ---------------------------------------------------------------- cabecera */
 .barra { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 12px; padding: 10px 16px; min-height: var(--alto-barra);
@@ -139,41 +139,64 @@ h2[tabindex="-1"]:focus-visible { outline: 2px solid var(--azul); outline-offset
 .mas-filtros[open] > summary { margin-bottom: 8px; }
 .filtros.checks { margin-top: -4px; }
 
-/* ---------------------------------------------------------------- tabla de líneas (estilo LudoProps) */
-.tabla { background: var(--panel); border: 1px solid var(--borde); border-radius: 14px; overflow: hidden; }
-.cab-tabla, .tabla .linea { display: grid; grid-template-columns: minmax(0, 2.3fr) 92px minmax(130px, 1.3fr) 64px 72px 72px 132px; gap: 4px 12px; align-items: center; }
-.cab-tabla { padding: 12px 16px; color: var(--suave); font-size: var(--fs-sm); border-bottom: 1px solid var(--borde); }
-.cab-tabla span:nth-child(n+4) { text-align: center; }
-.tabla .linea { grid-template-areas: "jug cuota barras prob r10 rt acc" "flags flags flags flags flags flags flags" "esc esc esc esc esc esc esc";
-  border-left: 4px solid transparent; border-bottom: 1px solid var(--borde); padding: 10px 16px 10px 12px;
-  content-visibility: auto; contain-intrinsic-size: auto 100px; }   /* filas fuera de pantalla: sin layout ni pintado hasta acercarse (alto medido del contenido: ≈ 100 px) */
+/* ---------------------------------------------------------------- tabla de líneas (estilo LudoProps: Jugador · Últimos 10 · Modelo · acierto) */
+.tabla { --w-barras: 168px; --w-prob: 76px; --w-hit: 92px; --foto: 52px; --gap-col: 16px;
+  background: var(--panel); border: 1px solid var(--borde); border-radius: 14px; overflow: hidden; }
+.cab-tabla, .tabla .linea { display: grid; grid-template-columns: minmax(0, 1fr) var(--w-barras) var(--w-prob) var(--w-hit); column-gap: var(--gap-col); align-items: center; }
+.cab-tabla { padding: 6px 16px 6px 16px; min-height: 44px; color: var(--suave); font-size: var(--fs-sm); font-weight: 600; border-bottom: 1px solid var(--borde); }
+.cab-num { text-align: center; }
+/* «Últ. 10 ▾»: rótulo corto visible y un <select> nativo transparente encima (lo usan el dedo, el teclado y el lector de pantalla) */
+.cab-sel { position: relative; justify-self: center; display: inline-flex; align-items: center; min-height: 32px; padding: 0 9px; border: 1px solid var(--borde-ctl); border-radius: 8px;
+  background: var(--panel2); color: var(--texto); white-space: nowrap; font-weight: 600; }
+.cab-sel select { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; font-size: 16px; }
+.cab-sel:focus-within { outline: 2px solid var(--azul); outline-offset: 2px; }
+.cab-sel:hover { border-color: var(--acento); }
+.tabla .linea { grid-template-areas: "jug barras prob hit" "jug acc acc acc" "flags flags flags flags" "esc esc esc esc"; grid-template-rows: auto 1fr; row-gap: 6px;
+  border-left: 4px solid transparent; border-bottom: 1px solid var(--borde); padding: 12px 16px 8px 12px;
+  content-visibility: auto; contain-intrinsic-size: auto 124px; }   /* filas fuera de pantalla: sin layout ni pintado hasta acercarse (alto medido en escritorio: 115–134 px) */
 .tabla .linea:last-child { border-bottom: 0; }
 .tabla .linea.c-verde { border-left-color: var(--verde); } .tabla .linea.c-amarillo { border-left-color: var(--amarillo); } .tabla .linea.c-rojo { border-left-color: var(--rojo); }
-.col-jug { grid-area: jug; min-width: 0; display: grid; gap: 2px; }
-.col-jug .nombre { font-size: 16px; }
-.apuesta { font-size: var(--fs-base); }
-.col-cuota { grid-area: cuota; display: grid; justify-items: start; gap: 3px; }
-.badge-cuota { display: inline-block; border: 1px solid var(--borde); background: var(--panel2); border-radius: 8px; padding: 2px 9px; font-weight: 700; }
-.badge-cuota.grande { font-size: var(--fs-md); padding: 4px 11px; }
-.col-barras { grid-area: barras; display: grid; gap: 3px; min-width: 0; }
-.col-barras .txt-chico { font-size: 11.5px; line-height: 1.3; }
-svg.mini { width: 100%; max-width: 150px; height: 40px; display: block; }
+.tabla .linea.con-escalera > :not(.l-escalera) { cursor: pointer; }   /* tocar la fila abre la escalera */
+.tabla .linea.con-escalera > .col-acc { cursor: default; }
+/* Jugador: foto a la izquierda; nombre + equipo, la línea y la píldora de la cuota con minutos y rol */
+.col-jug { grid-area: jug; min-width: 0; display: grid; grid-template-columns: var(--foto) minmax(0, 1fr); grid-template-areas: "foto cab" "foto apu" "foto meta";
+  column-gap: 12px; align-items: center; align-content: center; }
+.foto { grid-area: foto; align-self: start; width: var(--foto); height: var(--foto); border-radius: 10px; object-fit: cover; object-position: 50% 30%; background: var(--panel2); display: block; }
+.foto.foto-ini { display: grid; place-items: center; border-radius: 50%; border: 1px solid var(--borde); color: var(--suave); font-weight: 700; font-size: calc(var(--foto) * .34); letter-spacing: .02em; line-height: 1; user-select: none; }
+.jug-cab { grid-area: cab; min-width: 0; line-height: 1.25; }
+.jug-cab .nombre { font-size: 16px; font-weight: 700; }
+.jug-cab .mut { font-size: var(--fs-sm); white-space: nowrap; }
+.apuesta { grid-area: apu; font-size: var(--fs-base); line-height: 1.3; margin-top: 2px; }
+.jug-meta { grid-area: meta; font-size: var(--fs-sm); line-height: 1.35; margin-top: 4px; }
+.jug-meta .mut { white-space: normal; }
+.pill-cuota { display: inline-flex; align-items: baseline; gap: 4px; padding: 1px 8px; border: 1px solid var(--borde-ctl); border-radius: 7px; white-space: nowrap; line-height: 1.5; color: var(--texto); }
+.pill-casa { color: var(--suave); }
+.pill-cuota b { font-weight: 700; }
+/* Últimos 10 */
+.col-barras { grid-area: barras; min-width: 0; }
+svg.mini { width: var(--w-barras); max-width: 100%; height: 44px; display: block; overflow: visible; }
 svg.mini rect.ok { fill: var(--verde); }
-svg.mini rect.no { fill: var(--rojo); opacity: .85; }
-svg.mini .raya { stroke: var(--texto); stroke-opacity: .8; stroke-width: 1; stroke-dasharray: 3 3; }
-.col-nums { display: contents; }
-.col-num { text-align: center; font-size: 19px; color: var(--texto); }
-.col-num b { font-weight: 600; }
-.col-prob { grid-area: prob; } .col-r10 { grid-area: r10; } .col-rt { grid-area: rt; }
-.col-lab { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }   /* en escritorio la cabecera visual hace de rótulo */
-/* el % de la probabilidad lleva el color de la fila (el semáforo); las tasas de acierto van neutras */
-.tabla .linea .col-prob b { font-weight: 700; }
+svg.mini rect.no { fill: var(--rojo); }
+svg.mini rect.ok.prev { fill: color-mix(in srgb, var(--verde) 38%, var(--panel)); }     /* temporada pasada: más apagadas */
+svg.mini rect.no.prev { fill: color-mix(in srgb, var(--rojo) 38%, var(--panel)); }
+svg.mini .raya { stroke: var(--texto); stroke-opacity: .9; stroke-width: 1.25; stroke-dasharray: 4 3; }
+/* Modelo (color del semáforo de la línea) y acierto (neutro) */
+.col-num { text-align: center; line-height: 1.1; color: var(--texto); }
+.col-prob { grid-area: prob; font-size: 24px; }
+.col-prob b { font-weight: 800; }
 .tabla .linea.c-verde .col-prob { color: var(--verde); }
 .tabla .linea.c-amarillo .col-prob { color: var(--amarillo); }
 .tabla .linea.c-rojo .col-prob { color: var(--rojo); }
-.col-acc { grid-area: acc; display: grid; gap: 6px; }
-.col-flags { grid-area: flags; display: flex; flex-wrap: wrap; gap: 4px 6px; min-width: 0; }
-.tabla .l-escalera { grid-area: esc; min-width: 0; border-top: 1px dashed var(--borde); padding-top: 10px; margin-top: 2px; overflow-x: auto; }
+.col-hit { grid-area: hit; font-size: 18px; }
+.col-hit b { font-weight: 600; }
+/* acciones debajo del gráfico (en el hueco que deja la columna Jugador) y etiquetas chicas abajo de todo */
+.col-flags { grid-area: flags; display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.col-flags .tag { font-size: 11px; line-height: 17px; padding: 0 6px; border-radius: 5px; }
+.col-acc { grid-area: acc; align-self: end; justify-self: end; display: flex; gap: 6px; }
+.col-acc .add, .col-acc .desplegar { min-height: 32px; padding: 0 11px; font-size: 12.5px; }
+.col-acc .add:not(.en-ticket):not(:disabled) { background: transparent; color: var(--acento); border-color: color-mix(in srgb, var(--acento) 55%, var(--borde)); font-weight: 600; }
+.desplegar { border-color: var(--borde); }
+.tabla .l-escalera { grid-area: esc; min-width: 0; border-top: 1px dashed var(--borde); padding-top: 8px; margin-top: 2px; overflow-x: auto; cursor: auto; }
 .tabla .vacio { border: 0; border-radius: 0; }
 .linea.empezado .col-jug .nombre { color: var(--suave); }
 
@@ -184,11 +207,13 @@ svg.mini .raya { stroke: var(--texto); stroke-opacity: .8; stroke-width: 1; stro
 .escalera td small { color: var(--suave); }
 .escalera tr.sel td { background: color-mix(in srgb, var(--acento) 14%, transparent); }
 .escalera tr.menos td { border-top: 2px solid var(--borde); }
+.escalera td:first-child { box-shadow: inset 3px 0 0 var(--c, var(--borde)); padding-left: 10px; }   /* el semáforo de cada línea */
+.escalera th:last-child, .escalera td:last-child { text-align: right; }
+.escalera .pill-cuota { padding: 0 7px; }
+.escalera .nota b { color: var(--texto); font-weight: 600; }
 /* la probabilidad de cada escalón lleva el color de SU semáforo (no un umbral fijo de %) */
 .paso .l-prob { color: var(--c, var(--texto)); }
-.punto-mini { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--borde); }
 .paso.c-verde { --c: var(--verde); } .paso.c-amarillo { --c: var(--amarillo); } .paso.c-rojo { --c: var(--rojo); }
-.paso .punto-mini { background: var(--c, var(--borde)); }
 .add.add-esc { min-width: 36px; min-height: 32px; padding: 0 8px; font-size: 15px; }
 
 /* ---------------------------------------------------------------- combinadas sugeridas */
@@ -200,7 +225,7 @@ svg.mini .raya { stroke: var(--texto); stroke-opacity: .8; stroke-width: 1; stro
 .comb-punto { width: 12px; height: 12px; border-radius: 50%; background: var(--borde); }
 .comb-segura .comb-punto { background: var(--verde); } .comb-intermedia .comb-punto { background: var(--amarillo); } .comb-sonadora .comb-punto { background: var(--sueno); }
 .comb-meta { color: var(--suave); font-size: var(--fs-xs); }
-.comb-nums { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.comb-nums { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
 .comb-nums > div { background: var(--panel2); border-radius: 8px; padding: 7px 9px; }
 .comb-nums b { display: block; font-size: 18px; } .comb-nums span { display: block; font-size: 11.5px; color: var(--suave); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .comb-patas { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; font-size: 14px; }
@@ -223,6 +248,7 @@ svg.mini .raya { stroke: var(--texto); stroke-opacity: .8; stroke-width: 1; stro
 .pata-cuota input, .stake input { width: 92px; min-height: 36px; background: var(--panel2); border: 1px solid var(--borde-ctl); border-radius: 6px; padding: 0 8px; font-size: 16px; font-variant-numeric: tabular-nums; }
 .pata-cuota input[aria-invalid="true"] { border-color: var(--rojo); }
 .totales { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+#t-totales .totales { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .total { background: var(--panel2); border-radius: 8px; padding: 8px 10px; }
 .total span { display: block; font-size: var(--fs-xs); line-height: 1.3; color: var(--suave); } .total b { font-size: var(--fs-lg); }
 .stake { display: flex; gap: 8px; align-items: center; font-size: var(--fs-sm); color: var(--suave); margin: 10px 0; flex-wrap: wrap; }
@@ -455,25 +481,6 @@ svg.cal { width: 100%; max-width: 420px; height: auto; display: block; margin: 0
   .barra { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--fondo); }
 }
 
-/* ---------------------------------------------------------------- fila compacta en celular (estilo LudoProps): gráfico y % en la misma fila */
-@media (max-width: 900px) {
-  .cab-tabla { display: none; }
-  .tabla .linea {
-    grid-template-columns: minmax(0, 1fr) auto auto;
-    grid-template-areas: "jug jug cuota" "barras nums nums" "flags flags flags" "acc acc acc" "esc esc esc";
-    gap: 8px 12px; padding: 10px 12px 10px 10px; contain-intrinsic-size: auto 210px;   /* contenido medido a 390 px: ≈ 210 px */
-  }
-  .apuesta { font-size: 14.5px; font-weight: 600; }
-  .col-cuota { justify-items: end; align-self: start; }
-  .col-barras { align-self: end; }
-  .col-barras svg.mini { width: 120px; max-width: 100%; height: 36px; }
-  .col-nums { grid-area: nums; display: grid; grid-template-columns: repeat(3, minmax(2.9em, auto)); gap: 0 10px; align-self: end; justify-content: end; }
-  .col-num { grid-area: auto; display: grid; justify-items: center; font-size: var(--fs-md); line-height: 1.1; }
-  .col-lab { position: static; width: auto; height: auto; overflow: visible; clip: auto; font-size: 11px; color: var(--suave); margin-bottom: 3px; }
-  .col-acc { grid-template-columns: 1fr 1fr; }
-  .col-acc .add, .col-acc .desplegar { min-height: 38px; }
-}
-
 @media (max-width: 640px) {
   :root { --alto-barra: 57px; }
   .barra { padding: 8px 12px; gap: 10px; }
@@ -497,13 +504,26 @@ svg.cal { width: 100%; max-width: 420px; height: auto; display: block; margin: 0
   .filtros select, .filtros input[type="search"] { font-size: 16px; width: 100%; }  /* 16 px: evita el zoom de iOS */
   .filtros.checks { display: flex; flex-direction: column; align-items: flex-start; gap: 0; }
 
-  /* escalera: sin Temp. ni la columna del punto (el color pasa a una barrita en la 1.ª celda), sin cortes de renglón */
-  .escalera th:nth-child(5), .escalera td:nth-child(5), .escalera th:nth-child(7), .escalera td:nth-child(7) { display: none; }
+  /* Líneas en 390 px: una sola fila como LudoProps (Jugador · Últimos 10 · Modelo · acierto); la tabla va de borde a borde */
+  .tabla { --w-barras: 122px; --w-prob: 42px; --w-hit: 54px; --foto: 44px; --gap-col: 6px; margin: 0 -12px; border-radius: 0; border-left: 0; border-right: 0; }
+  .cab-tabla { padding: 4px 8px 4px 11px; min-height: 40px; font-size: var(--fs-xs); }
+  .cab-sel { padding: 0 5px; min-height: 30px; font-size: 11px; justify-self: end; }
+  .cab-num { font-size: 11.5px; }
+  .tabla .linea { border-left-width: 3px; padding: 10px 8px 8px; row-gap: 6px; contain-intrinsic-size: auto 160px; }   /* alto medido a 390 px: 150–170 px */
+  .col-jug { grid-template-areas: "foto cab" "apu apu" "meta meta"; column-gap: 8px; }
+  .foto { align-self: center; border-radius: 9px; }
+  .jug-cab .nombre { font-size: 14.5px; }
+  .jug-cab .mut { font-size: var(--fs-xs); }
+  .apuesta { font-size: 14px; font-weight: 600; margin-top: 5px; }
+  .jug-meta { font-size: var(--fs-xs); margin-top: 3px; }
+  .pill-cuota { padding: 0 5px; gap: 3px; }
+  .col-prob { font-size: 19px; }
+  .col-hit { font-size: 15px; }
+  /* escalera: sin cortes de renglón */
   .escalera th, .escalera td { white-space: nowrap; padding: 5px 5px; }
   .escalera table { font-size: 13px; }
-  .escalera td:first-child { box-shadow: inset 3px 0 0 var(--c, var(--borde)); padding-left: 8px; }
+  .escalera td:first-child { padding-left: 8px; }
   .escalera td:first-child small { display: block; font-size: 11px; }
-  .escalera td:last-child, .escalera th:last-child { text-align: right; }
 
   /* v0.6 */
   .armador { padding: 12px; margin: 0 0 16px; }
@@ -526,3 +546,4 @@ svg.cal { width: 100%; max-width: 420px; height: auto; display: block; margin: 0
   .btn-ticket .bt-txt { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }  /* se sigue leyendo */
 }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+@media (max-width: 370px) { .escalera .esc-temp { display: none; } }   /* en 360 px no entra Temp. (sí en 390) */

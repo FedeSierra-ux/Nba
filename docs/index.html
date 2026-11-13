@@ -7,7 +7,7 @@
 <meta name="description" content="Líneas «más de» de jugadores NBA con todas las escaleras de cuotas, semáforo de riesgo, spread, blowout y armador de combinadas.">
 <meta name="theme-color" content="#0e1116">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23f0a640'/%3E%3Cpath d='M2 16h28M16 2v28M6 6c6 5 6 15 0 20M26 6c-6 5-6 15 0 20' stroke='%230e1116' stroke-width='2' fill='none'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="estilos.css?v=0.6.0">
+<link rel="stylesheet" href="estilos.css?v=0.6.1">
 <script>/* el JSON empieza a bajar ya, en paralelo con el CSS y los scripts. «no-cache» revalida con ETag (304 si no cambió) y nunca muestra datos viejos */
 window.__hoy = fetch('data/hoy.json', { cache: 'no-cache' }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
 window.__hoy.catch(function () {});</script>
@@ -70,7 +70,7 @@ window.__hoy.catch(function () {});</script>
         <h2 id="h-lineas" tabindex="-1">Líneas «más de»</h2>
         <span class="contador" id="contador" aria-live="polite"></span>
       </div>
-      <p class="ayuda">Solo líneas con <b>cuota de Betano</b>. Cada jugador muestra la <b>línea más alta</b> que cumple la probabilidad mínima; <b>«N líneas ▾»</b> abre su escalera completa.</p>
+      <p class="ayuda">Solo líneas con <b>cuota de Betano de 1,30 o más</b>. Cada jugador muestra la <b>línea más alta</b> que cumple la probabilidad mínima; tocá la fila o <b>«N líneas ▾»</b> para ver su escalera completa.</p>
 
       <div class="filtros filtros-base" role="group" aria-label="Partido y probabilidad">
         <label class="campo">Partido
@@ -123,7 +123,13 @@ window.__hoy.catch(function () {});</script>
       </details>
 
       <div class="tabla">
-        <div class="cab-tabla" aria-hidden="true"><span>Jugador</span><span>Betano</span><span>Últimos 10 partidos</span><span>Prob.</span><span>Acierto 10</span><span>Acierto temp.</span><span></span></div>
+        <div class="cab-tabla">
+          <span aria-hidden="true">Jugador</span><span aria-hidden="true">Últimos 10</span><span aria-hidden="true" class="cab-num">Modelo</span>
+          <span class="cab-sel"><span class="cab-sel-txt" aria-hidden="true"><span id="f-acierto-txt">Últ. 10</span> ▾</span>
+            <select id="f-acierto" autocomplete="off" aria-label="Última columna: acierto de la línea">
+              <option value="r10">Últimos 10 partidos</option><option value="rt">Temporada</option>
+            </select></span>
+        </div>
         <div id="lineas" class="lineas"></div>
       </div>
       <button type="button" class="mas-btn" id="ver-mas" hidden>Ver más jugadores</button>
@@ -134,7 +140,7 @@ window.__hoy.catch(function () {});</script>
       <div class="seccion-cab"><h2 id="h-sug" tabindex="-1">Combinadas sugeridas del día</h2></div>
       <section class="armador" aria-labelledby="h-armar">
         <h3 id="h-armar" class="armador-tit">Armá tu combinada</h3>
-        <p class="ayuda">Elegí la cuota y las reglas: se buscan las patas «más de» que <b>maximizan la probabilidad</b> y llegan a esa cuota. Solo líneas con cuota de Betano, sin dudosos y de partidos que no empezaron.</p>
+        <p class="ayuda">Elegí la cuota y las reglas: se buscan las patas «más de» que <b>maximizan la probabilidad</b> y llegan a esa cuota. Solo líneas con cuota de Betano de 1,30 o más, sin dudosos y de partidos que no empezaron.</p>
         <form id="armar" class="armar-form" novalidate autocomplete="off">
           <div class="armar-campos">
             <label class="campo">Cuota objetivo<input id="a-cuota" type="text" inputmode="decimal" value="3,00" enterkeyhint="done"></label>
@@ -227,14 +233,14 @@ window.__hoy.catch(function () {});</script>
     </div>
   </aside>
 </main>
-<footer class="pie">NBA Semáforo v0.6.0 · <a href="#/metodo">Cómo se calcula</a> · Análisis estadístico, no garantiza resultados. Apostá con responsabilidad.</footer>
+<footer class="pie">NBA Semáforo v0.6.1 · <a href="#/metodo">Cómo se calcula</a> · Análisis estadístico, no garantiza resultados. Apostá con responsabilidad.</footer>
 <div class="sr-only" id="anuncio" aria-live="polite"></div>
-<script src="correlacion.js?v=0.6.0"></script>
-<script src="sugeridas.js?v=0.6.0"></script>
-<script src="calificar.js?v=0.6.0"></script>
-<script src="resultados.js?v=0.6.0"></script>
-<script src="apuestas.js?v=0.6.0"></script>
-<script src="vivo.js?v=0.6.0"></script>
-<script src="app.js?v=0.6.0"></script>
+<script src="correlacion.js?v=0.6.1"></script>
+<script src="sugeridas.js?v=0.6.1"></script>
+<script src="calificar.js?v=0.6.1"></script>
+<script src="resultados.js?v=0.6.1"></script>
+<script src="apuestas.js?v=0.6.1"></script>
+<script src="vivo.js?v=0.6.1"></script>
+<script src="app.js?v=0.6.1"></script>
 </body>
 </html>
