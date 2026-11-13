@@ -33,13 +33,28 @@ La escalera de cuotas de Betano se baja para **puntos, rebotes y asistencias** (
 ## Uso
 
 ```bash
+python3 scripts/resultados.py          # califica los días anteriores y recalcula docs/data/calibracion.json
 python3 scripts/actualizar.py          # baja los datos de hoy (≈3 min) y escribe docs/data/hoy.json
+node scripts/foto_sugeridas.js         # guarda las combinadas sugeridas pre-partido en el historial del día
 python3 -m http.server -d docs 8000    # abrir http://localhost:8000
 ```
 
 Solo usa la librería estándar de Python 3.9+. No hay dependencias que instalar.
 
 El workflow `.github/workflows/actualizar.yml` regenera los datos varias veces por día (incluyendo después del reporte oficial de lesiones de las 17:00 ET) y los publica en el repositorio. Para ver la página en línea, activá GitHub Pages sobre la carpeta `/docs` de la rama principal.
+
+### Archivos de datos (`docs/data/`)
+
+| Archivo | Qué guarda |
+|---|---|
+| `hoy.json` | Partidos (`partidos[]`, con `espn`: id del partido en ESPN) y jugador-mercado (`grupos[]`) con su escalera de líneas (`pasos[]`). En puntos, rebotes y asistencias cada grupo trae `temp` (valores de la temporada) y `tg`: un partido por fila, del más viejo al más nuevo, `[valor, minutos, local (1/0), margen, b2b (1/0)]`; margen = puntos del equipo − puntos del rival; b2b = 1 si jugó el día anterior. |
+| `historial/<fecha>.json` | Foto pre-partido del día (solo partidos que no empezaron; las corridas tardías no pisan lo anterior): `lineas` (línea principal, con `p` del modelo y `pk` de la casa sin margen), `escalera` (todas las líneas `{id, gid, m, per, L, cu, p, c}`) y `sugeridas` (las combinadas del día, la primera foto pre-partido gana). |
+| `resultados/<fecha>.json` | Box score de los días terminados: `partidos` (estado y marcador) y `jugadores` (minutos y estadísticas; 0 minutos = no jugó). `completo` es falso hasta que terminan todos los partidos; se reintenta (últimos 7 días). |
+| `calibracion.json` | Acierto esperado vs. observado por color y por tramo de probabilidad (líneas principales y escalera), Brier del modelo vs. la casa, ROI de apuesta plana por color y récord de las combinadas sugeridas por nivel. |
+
+**Cómo se califica** (todas las líneas son «más de»): gana si el valor supera la línea (con líneas x,5 no hay empate; con una línea entera el empate se anula). Si el jugador no jugó (0 minutos o no figura en el box score), la pata se **anula**, no se pierde. Combos: PRA = puntos + rebotes + asistencias; PR, PA y RA igual. Una **combinada** pierde si pierde una pata; una pata anulada cuenta como ganada a cuota 1,00 (se paga con las demás, como hacen las casas) y si se anulan todas se devuelve la apuesta. Las patas de partidos suspendidos o sin terminar y las de un período (1er cuarto) no se califican. El ROI es de apuesta plana (1 unidad por línea) a la cuota de Betano; las anuladas no cuentan.
+
+`resultados.py` hace 1 consulta a LudoProps por día (`dia`) y 1 por partido con líneas (`box`), espaciadas, solo para días sin resultados completos.
 
 ### Pruebas
 
@@ -65,7 +80,7 @@ node --test tests/correlacion.test.js tests/sugeridas.test.js
 
 ## Límites
 
-- **Las probabilidades no están validadas contra resultados.** No hay cuotas históricas públicas para hacerlo. Cada corrida guarda una foto del día en `docs/data/historial/`, para poder medir la calibración cuando haya suficientes días.
+- **La calibración recién empieza.** No hay cuotas históricas públicas: cada corrida guarda una foto pre-partido en `docs/data/historial/` y `scripts/resultados.py` la contrasta con los box scores en `docs/data/calibracion.json`. Con pocos días la muestra es chica.
 - Muestra chica: estamos al comienzo de la temporada.
 - El defensa-por-posición se muestra solo como contexto; hay poca evidencia de que prediga.
 - Las lesiones cambian hasta minutos antes del partido.

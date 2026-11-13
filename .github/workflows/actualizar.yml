@@ -30,11 +30,22 @@ jobs:
         with:
           node-version: "22"
       - name: Pruebas
+        # incluye tests/test_modelo.py, tests/test_datos.py y tests/test_resultados.py
         run: |
           python3 -m unittest discover -s tests
           SKIP_DATOS_REALES=1 node --test tests/correlacion.test.js tests/sugeridas.test.js
+      - name: Resultados y calibración
+        # Califica los días anteriores (≈ 1 consulta a LudoProps por partido) y recalcula docs/data/calibracion.json.
+        # Si falla, la actualización del día sigue igual.
+        continue-on-error: true
+        timeout-minutes: 5
+        run: python3 scripts/resultados.py
       - name: Generar datos
         run: python3 scripts/actualizar.py
+      - name: Foto de las combinadas sugeridas
+        # Guarda las sugeridas pre-partido en el historial del día (solo la primera vez en el día).
+        continue-on-error: true
+        run: node scripts/foto_sugeridas.js
       - name: Publicar cambios
         run: |
           git config user.name "github-actions[bot]"
