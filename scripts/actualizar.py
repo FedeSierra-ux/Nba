@@ -2,7 +2,7 @@
 """Baja los datos del día y calcula el semáforo de riesgo.
 
 Fuentes (todas públicas y sin clave):
-  * LudoProps  (https://ludoprops.com/api/...)  -> líneas, promedios, minutos, lesiones, cuotas Betano/bet365
+  * LudoProps  (https://ludoprops.com/api/...)  -> líneas, promedios, minutos, lesiones, cuotas de Betano
   * ESPN       (site.api.espn.com)               -> spread, total, moneyline, partidos de días previos (back-to-back)
 
 Uso:
