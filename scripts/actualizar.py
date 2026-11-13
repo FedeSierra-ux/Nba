@@ -21,6 +21,8 @@ UA = "NbaSemaforo/1.0 (uso personal; consultas espaciadas)"
 # --------------------------------------------------------------------------- parámetros del modelo
 SD_PARTIDO = 12.0        # desvío del margen final de un partido NBA (puntos)
 UMBRAL_BLOWOUT = 14.5    # margen a partir del cual los titulares suelen sentarse
+P_MAX = 0.96            # techo de probabilidad por línea (lesión en el partido, faltas, minutos de basura)
+P_MAX_MODELO = 0.97
 R0 = 0.27                # probabilidad de blowout "típica" (ya incluida en los promedios de temporada)
 CV = {  # coeficiente de variación a priori por mercado (heurístico)
     'pts': .38, 'reb': .50, 'ast': .55, 'pra': .30, 'pr': .32, 'pa': .33, 'ra': .42,
@@ -395,7 +397,7 @@ def paso(k, L, cu, cb, temp, principal, com):
     """Evalúa 'más de L' para un jugador y mercado. cu = cuota Betano, cb = cuota bet365 (si existen)."""
     rojo, fl_com, graves = com
     p0 = p_mas(L, k["mu"], k["sd"])
-    p_modelo = sig(logit(p0) + k["d_modelo"])
+    p_modelo = min(P_MAX_MODELO, sig(logit(p0) + k["d_modelo"]))
     real = bool(cu and k["overround"])
     if real:
         p_mkt = min(.99, (1 / cu) / k["overround"])
@@ -404,6 +406,8 @@ def paso(k, L, cu, cb, temp, principal, com):
     else:
         p_mkt = None
     p = .5 * p_modelo + .5 * p_mkt if p_mkt is not None else .5 * p_modelo + .25
+    # Siempre hay un riesgo que las estadísticas no ven (lesión en el partido, faltas, minutos de basura): ninguna línea es 100 % segura.
+    p = min(p, P_MAX)
 
     ult = k["ult"]
     r10 = sum(1 for v in ult if v > L) / len(ult)

@@ -30,6 +30,12 @@
       <div id="partidos" class="partidos"></div>
     </section>
 
+    <section aria-labelledby="h-sug">
+      <div class="seccion-cab"><h2 id="h-sug">Combinadas sugeridas del día</h2></div>
+      <p class="ayuda">Armadas con las líneas «más de» de hoy: para cada nivel se buscan las patas que <b>maximizan la probabilidad</b> con la cuota total mínima indicada. Cargalas en tu combinada para ver el detalle y cambiar cualquier pata o cuota.</p>
+      <div id="sug-dia" class="comb-grid"></div>
+    </section>
+
     <section aria-labelledby="h-lineas">
       <div class="seccion-cab">
         <h2 id="h-lineas">Líneas «más de»</h2>
@@ -92,20 +98,16 @@
       <button type="button" class="cerrar" id="cerrar-ticket" aria-label="Cerrar">×</button>
     </div>
     <div id="ticket-cuerpo"></div>
-    <div class="sugeridas">
-      <h3>Armar sugerida</h3>
-      <div class="sug-botones" id="sugeridas"></div>
-      <p class="nota">Una pata por partido, solo «más de» en líneas verdes con probabilidad ≥ 75% y cuota publicada.</p>
-    </div>
     <div class="guardadas">
       <h3>Combinadas guardadas</h3>
       <div id="guardadas"></div>
     </div>
   </aside>
 </main>
-<footer class="pie">NBA Semáforo v0.2.0 · Análisis estadístico, no garantiza resultados. Apostá con responsabilidad.</footer>
+<footer class="pie">NBA Semáforo v0.3.0 · Análisis estadístico, no garantiza resultados. Apostá con responsabilidad.</footer>
 <div class="fondo" id="fondo" hidden></div>
 <script src="correlacion.js"></script>
+<script src="sugeridas.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

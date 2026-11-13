@@ -2,7 +2,7 @@
 
 Página que toma las líneas de jugadores NBA del día, las cruza con spread, riesgo de blowout, back-to-back y lesiones, y les pone un **semáforo de riesgo**. Permite armar combinadas pata por pata viendo la cuota y la probabilidad en vivo.
 
-**Versión 0.2.0**
+**Versión 0.3.0**
 
 ## Qué trae
 
@@ -10,7 +10,8 @@ Página que toma las líneas de jugadores NBA del día, las cruza con spread, ri
 - **Líneas «más de» con toda su escalera** (≈3.400 jugador-mercado, ≈25.000 líneas): puntos, rebotes, asistencias, combos, triples, tiros, libres, robos, tapas, pérdidas, faltas y primer cuarto. Para cada jugador se muestra la **línea más alta que cumple la probabilidad mínima** que elijas (55 % a 90 %, o la recomendada por el semáforo) y un desplegable con **todas las líneas** (+3,5, +4,5, +5,5…) con cuota de Betano, cuota de bet365, probabilidad, **cuota justa** y semáforo.
 - **Solo «más de» por defecto.** Los «menos» se pueden ver, solo para la línea principal, desde el desplegable.
 - **Semáforo** 🟢🟡🔴 por línea, con filtros por partido, tipo de mercado (puntos, rebotes, asistencias, combos, otros), probabilidad mínima, cuota y búsqueda.
-- **Armador de combinadas**: sumá patas desde cualquier línea de la escalera (elegir otra línea del mismo jugador y mercado reemplaza la anterior), editá la cuota de cada una (por ejemplo, con la de Stake), mirá cuota total, probabilidad con correlación, cuota justa de la combinada, ventaja estimada y el semáforo. Guarda combinadas en el navegador y arma sugeridas de 3, 4 o 5 patas (solo «más de», líneas verdes con probabilidad ≥ 75 % y cuota publicada).
+- **Armador de combinadas**: sumá patas desde cualquier línea de la escalera (elegir otra línea del mismo jugador y mercado reemplaza la anterior), editá la cuota de cada una (por ejemplo, con la de Stake), mirá cuota total, probabilidad con correlación, cuota justa de la combinada, ventaja estimada y el semáforo. Guarda combinadas en el navegador.
+- **Combinadas sugeridas del día** (solo «más de», con cuota publicada y modelo completo): 🟢 **Segura** (3 y 4 patas, cuota ≥ 1,99; solo líneas verdes de ≥ 72 %, una pata por partido), 🟡 **Intermedia** (4 y 5 patas, cuota ≥ 5; verdes y amarillas de ≥ 60 %) y 🟣 **Soñadora** (7 patas, cuota ≥ 20; de ≥ 50 %). Cada una muestra cuota, probabilidad («1 de N») y cuota justa, y se carga con un botón en el armador para editarla. Se resuelven como una mochila: maximizar la probabilidad conjunta sujeta a la cuota mínima (relajación de Lagrange + mejora local, `docs/sugeridas.js`).
 
 ## Fuentes de datos
 
@@ -38,7 +39,7 @@ El workflow `.github/workflows/actualizar.yml` regenera los datos varias veces p
 
 ```bash
 python3 -m unittest discover -s tests
-node --test tests/correlacion.test.js
+node --test tests/correlacion.test.js tests/sugeridas.test.js
 ```
 
 ## Cómo funciona el semáforo
@@ -51,6 +52,7 @@ node --test tests/correlacion.test.js
 4. **Escalera**: la probabilidad de «más de X» para cualquier X sale de la misma distribución desplazada con la corrección de la línea principal. Las tasas de acierto se calculan sobre los últimos 10 partidos y, en puntos/rebotes/asistencias, sobre todos los partidos de la temporada.
 5. **Colores** (para cada línea de la escalera):
    - 🟢 probabilidad ≥ 60 %, promedios de temporada / últimos 10 / proyección por encima de la línea (≥ 4 %), tasas de acierto a favor y ninguna en contra, ≥ 26 minutos proyectados, minutos estables, sin lesión, sin riesgo alto de blowout ni back-to-back (salvo que la línea tenga ≥ 75 % de probabilidad), y el modelo no supera a la casa por más de 20 puntos.
+   - Ninguna línea supera 96 %: siempre queda un riesgo que las estadísticas no ven (lesión durante el partido, faltas, minutos de basura).
    - 🟡 probabilidad ≥ 55 % con casi todo a favor pero con alguna alerta.
    - 🔴 el resto; automático si es *Questionable/Doubtful*, "no sugerir" del sitio o pocos minutos.
 6. **Combinadas**: la probabilidad conjunta usa una cópula gaussiana (Monte Carlo con semilla fija). Patas del mismo jugador se correlacionan según las estadísticas que comparten; las del mismo partido, levemente; entre partidos distintos se asumen independientes.

@@ -25,8 +25,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
       - name: Pruebas
-        run: python3 -m unittest discover -s tests
+        run: |
+          python3 -m unittest discover -s tests
+          node --test tests/correlacion.test.js tests/sugeridas.test.js
       - name: Generar datos
         run: python3 scripts/actualizar.py
       - name: Publicar cambios

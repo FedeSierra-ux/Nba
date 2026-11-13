@@ -141,3 +141,8 @@ class Escalera(unittest.TestCase):
     def test_lesionado_deja_toda_la_escalera_en_rojo(self):
         g = self.grupo(estado="Questionable")
         self.assertTrue(all(s["c"] == "rojo" for s in g["pasos"]))
+
+    def test_ninguna_linea_supera_el_techo_de_probabilidad(self):
+        g = self.grupo()
+        self.assertTrue(all(s["p"] <= act.P_MAX + 1e-9 for s in g["pasos"]))
+        self.assertTrue(all(s["ju"] >= 1 / act.P_MAX - 0.02 for s in g["pasos"]))

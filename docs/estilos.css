@@ -152,3 +152,22 @@ h2 { font-size: 18px; margin: 0; } h3 { font-size: 14px; margin: 0 0 8px; color:
 .add.chico { padding: 3px 9px; min-width: 32px; text-align: center; }
 @media (max-width: 640px) { .l-botones .desplegar { grid-column: 1 / 3; } }
 @media (max-width: 640px) { .escalera td, .escalera th { padding: 5px 4px; } .escalera table { font-size: 13px; } .add.chico { min-width: 28px; padding: 3px 6px; } }
+
+/* v0.3: combinadas sugeridas del día */
+:root { --sueno: #b48cff; }
+.comb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px; }
+.comb { background: var(--panel); border: 1px solid var(--borde); border-top-width: 4px; border-radius: var(--radio); padding: 14px; display: grid; gap: 10px; align-content: start; }
+.comb-segura { border-top-color: var(--verde); } .comb-intermedia { border-top-color: var(--amarillo); } .comb-sonadora { border-top-color: var(--sueno); }
+.comb-cab { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.comb-tipo { font-weight: 700; font-size: 17px; display: flex; align-items: center; gap: 8px; }
+.comb-punto { width: 12px; height: 12px; border-radius: 50%; background: var(--borde); }
+.comb-segura .comb-punto { background: var(--verde); } .comb-intermedia .comb-punto { background: var(--amarillo); } .comb-sonadora .comb-punto { background: var(--sueno); }
+.comb-meta { color: var(--suave); font-size: 12.5px; }
+.comb-nums { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.comb-nums > div { background: var(--panel2); border-radius: 8px; padding: 7px 9px; }
+.comb-nums b { display: block; font-size: 18px; } .comb-nums span { font-size: 11.5px; color: var(--suave); }
+.comb-patas { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; font-size: 14px; }
+.comb-patas li { border-bottom: 1px solid var(--borde); padding-bottom: 6px; }
+.comb-patas small { display: block; color: var(--suave); font-size: 12px; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 3px; background: var(--borde); }
+.dot.verde { background: var(--verde); } .dot.amarillo { background: var(--amarillo); } .dot.rojo { background: var(--rojo); }

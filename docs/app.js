@@ -63,7 +63,7 @@
     var t = leer(CLAVE_TICKET, null);
     if (t && t.fecha === d.fecha && Array.isArray(t.legs)) S.ticket = t.legs.filter(function (l) { return S.porClave.has(l.gkey); });
     if (t && typeof t.stake === 'number') S.stake = t.stake;
-    cabecera(); partidos(); selectorMercados(); metodo(); sugeridas();
+    cabecera(); partidos(); selectorMercados(); metodo(); sugeridasDia();
     enlazar(); aplicarFiltros(); pintarTicket();
   }
 
@@ -379,32 +379,34 @@
     }).join('');
   }
 
-  // ----------------------------------------------------------------- sugeridas (solo «más de»)
-  function armarSugerida(n) {
-    var pool = [];
-    S.grupos.forEach(function (g) {
-      var cand = g.pasos.filter(function (s) { return s.c === 'verde' && s.p >= 0.75 && cuotaDe(s) != null; });
-      if (!cand.length) return;
-      var s = cand.reduce(function (a, b) { return b.L > a.L ? b : a; });
-      pool.push({ g: g, s: s, ev: s.p * cuotaDe(s) - 1 });
+  // ----------------------------------------------------------------- combinadas sugeridas del día
+  var COMBOS = [];
+  function sugeridasDia() {
+    COMBOS = window.Sugeridas.todas(S.grupos).map(function (c) {
+      var patas = c.legs.map(function (l) { return { id: l.g.id, eq: l.g.eq, gid: l.g.gid, m: l.g.m, lado: 'mas', p: l.s.p }; });
+      var cj = window.Correlacion.conjunta(patas);
+      c.cuota = c.legs.reduce(function (a, l) { return a * l.cu; }, 1);
+      c.p = cj.conj; c.indep = cj.indep;
+      return c;
     });
-    pool.sort(function (a, b) { return b.ev - a.ev || b.s.p - a.s.p; });
-    function intentar(porJuego, maxMercado) {
-      var legs = [], jug = new Set(), jue = {}, mer = {};
-      for (var i = 0; i < pool.length && legs.length < n; i++) {
-        var x = pool[i];
-        if (jug.has(x.g.id) || (jue[x.g.gid] || 0) >= porJuego || (mer[x.g.m] || 0) >= maxMercado) continue;
-        legs.push(x); jug.add(x.g.id); jue[x.g.gid] = (jue[x.g.gid] || 0) + 1; mer[x.g.m] = (mer[x.g.m] || 0) + 1;
-      }
-      return legs;
-    }
-    var legs = intentar(1, 2);
-    if (legs.length < n) legs = intentar(1, 3);
-    if (legs.length < n) legs = intentar(2, 3);
-    return legs;
+    var cont = $('#sug-dia');
+    if (!COMBOS.length) { cont.innerHTML = '<div class="vacio">Hoy no hay suficientes líneas verdes o amarillas con cuota para armar combinadas sugeridas.</div>'; return; }
+    cont.innerHTML = COMBOS.map(function (c, i) {
+      var uno = c.p > 0 ? Math.round(1 / c.p) : null;
+      return '<article class="comb comb-' + c.id + '">' +
+        '<div class="comb-cab"><span class="comb-tipo"><span class="comb-punto"></span>' + esc(c.nombre) + '</span><span class="comb-meta">' + c.n + ' patas · cuota ≥ ' + fC(c.T) + '</span></div>' +
+        '<div class="comb-nums"><div><b>@' + fC(c.cuota) + '</b><span>cuota total</span></div><div><b>' + fP(c.p) + '</b><span>probabilidad' + (uno ? ' (1 de ' + uno + ')' : '') + '</span></div><div><b>' + fC(1 / c.p) + '</b><span>cuota justa</span></div></div>' +
+        '<ul class="comb-patas">' + c.legs.map(function (l) {
+          return '<li><b>' + esc(l.g.j) + '</b> MÁS ' + fL(l.s.L) + ' ' + esc(l.g.mn) + '<small>' + esc(l.g.eq) + (l.g.loc ? ' vs ' : ' @ ') + esc(l.g.riv) + ' · ' + fP(l.s.p) + ' · @' + fC(l.cu) + ' ' + esc(fuenteDe(l.s)) + ' · <span class="dot ' + l.s.c + '"></span>' + l.s.c + '</small></li>';
+        }).join('') + '</ul>' +
+        '<p class="nota">' + esc(c.resumen) + '</p>' +
+        '<button type="button" class="btn primario" data-comb="' + i + '">Cargar en mi combinada</button></article>';
+    }).join('');
   }
-  function sugeridas() {
-    $('#sugeridas').innerHTML = [3, 4, 5].map(function (n) { return '<button type="button" class="btn" data-sug="' + n + '">' + n + ' patas</button>'; }).join('');
+  function cargarCombo(i) {
+    var c = COMBOS[i]; if (!c) return;
+    S.ticket = c.legs.map(function (l) { return nuevaPata(l.g, l.s, 'mas'); });
+    cambioTicket(); abrirTicket(true);
   }
 
   // ----------------------------------------------------------------- método
@@ -415,6 +417,7 @@
       '<h4>Escalera de líneas</h4><p>Para puntos, rebotes y asistencias se bajan las cuotas reales de Betano y bet365 de cada línea. Donde la casa no publica una línea (por ejemplo un +3,5 muy bajo) o en los demás mercados, la línea se calcula con el modelo y aparece sin cuota, con su <b>cuota justa</b> (1 / probabilidad). El modelo de cada línea se ajusta con la misma corrección que la línea principal.</p>' +
       '<h4>Probabilidad de cada línea</h4><p>El <b>modelo</b> promedia la estimación del sitio (proyección de minutos y rol) y una propia (proyección ± variabilidad de los últimos 10 partidos, con distribución binomial negativa para cifras bajas). Antes se ajusta por <b>riesgo de blowout</b> (spread → probabilidad de que el margen supere ' + (m.umbral_blowout || 14.5) + ' puntos → minutos que pierden los titulares) y por <b>back-to-back</b>. Cuando la línea tiene cuota, el resultado final es el <b>promedio entre el modelo y la probabilidad de la casa</b> sin su margen. Las líneas donde el modelo supera a la casa por más de 20 puntos se marcan.</p>' +
       '<h4>Semáforo (por línea)</h4><ul><li><b>Verde:</b> probabilidad ≥ 60%, promedios de temporada, últimos 10 y proyección por encima de la línea (≥ 4%), tasas de acierto a favor y ninguna en contra, ≥ 24 minutos, minutos estables, sin lesión y sin riesgo alto de blowout ni back-to-back (salvo que la línea sea muy segura).</li><li><b>Amarillo:</b> probabilidad ≥ 55% con casi todo a favor, pero con una alerta.</li><li><b>Rojo:</b> el resto. Automático si el jugador es dudoso (Questionable/Doubtful), el sitio lo marca "no sugerir" o juega pocos minutos.</li></ul>' +
+      '<h4>Combinadas sugeridas</h4><p><b>Segura</b> (3 y 4 patas, cuota ≥ 1,99), <b>Intermedia</b> (4 y 5 patas, cuota ≥ 5) y <b>Soñadora</b> (7 patas, cuota ≥ 20). Para cada una se resuelve un problema de mochila: elegir las patas «más de» que maximizan la probabilidad conjunta con la cuota mínima, con un jugador por pata y solo líneas con cuota publicada, modelo completo y sin jugadores dudosos. La Segura usa solo líneas verdes de al menos 72%; la Intermedia, verdes y amarillas de al menos 60%; la Soñadora, de al menos 50%. Ninguna línea supera 96% porque siempre queda un riesgo que las estadísticas no ven.</p>' +
       '<h4>Combinadas</h4><p>La probabilidad conjunta usa una cópula gaussiana: patas del mismo jugador se tratan como correlacionadas y las del mismo partido con una correlación leve. Entre partidos distintos se asumen independientes. Una línea muy segura paga poco: la cuota total es el producto de las cuotas.</p>' +
       '<h4>Límites</h4><ul><li>Las probabilidades salen de un modelo <b>sin validar contra resultados</b>: no hay cuotas históricas para comprobarlo. Cada corrida guarda una foto del día en <code>docs/data/historial/</code> para poder hacerlo más adelante.</li><li>Muestra chica: estamos a pocos partidos del inicio de temporada.</li><li>El defensa-por-posición se muestra solo como contexto: hay poca evidencia de que prediga.</li><li>Las lesiones cambian hasta minutos antes del partido. Verificá antes de apostar.</li><li>Esto es análisis estadístico, no una garantía ni consejo financiero. Apostá solo lo que puedas perder.</li></ul>';
   }
@@ -507,13 +510,8 @@
       }
     });
 
-    $('#sugeridas').addEventListener('click', function (e) {
-      var b = e.target.closest('[data-sug]'); if (!b) return;
-      var n = +b.dataset.sug, legs = armarSugerida(n);
-      if (legs.length < n) alert('Hoy no hay suficientes líneas verdes con cuota para armar ' + n + ' patas (' + legs.length + ' disponibles).');
-      if (!legs.length) return;
-      S.ticket = legs.map(function (x) { return nuevaPata(x.g, x.s, 'mas'); });
-      cambioTicket(); abrirTicket(true);
+    $('#sug-dia').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-comb]'); if (b) cargarCombo(+b.dataset.comb);
     });
     $('#guardadas').addEventListener('click', function (e) {
       var c = e.target.closest('[data-cargar]'), b = e.target.closest('[data-borrar]');
