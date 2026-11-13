@@ -21,6 +21,7 @@ UA = "NbaSemaforo/1.0 (uso personal; consultas espaciadas)"
 # --------------------------------------------------------------------------- parámetros del modelo
 SD_PARTIDO = 12.0        # desvío del margen final de un partido NBA (puntos)
 UMBRAL_BLOWOUT = 14.5    # margen a partir del cual los titulares suelen sentarse
+CUOTA_MIN = 1.30        # no se muestran líneas que paguen menos (pedido del usuario)
 P_MAX = 0.96            # techo de probabilidad por línea (lesión en el partido, faltas, minutos de basura)
 P_MAX_MODELO = 0.97
 ESTADOS_ROJO = {"Questionable", "Doubtful", "Out", "Suspension", "Suspended", "Inactive", "Day-To-Day"}
@@ -495,7 +496,7 @@ def construir_grupo(f, e, ladder):
     temp = ladder["temp"] if ladder else None
     pasos = []
     for L in sorted(betano):
-        if L <= 0:
+        if L <= 0 or betano[L] < CUOTA_MIN:
             continue
         pasos.append(paso(k, L, betano[L], temp, L == f["linea"], (rojo, fl_com, graves)))
     if not pasos:
@@ -581,7 +582,7 @@ def bajar_escaleras(filas, mercados, avisos, hilos=2, pausa=0.2, presupuesto_s=6
 # --------------------------------------------------------------------------- foto del día (historial)
 def foto_del_dia(fecha, generado_en, partidos, grupos, previa=None):
     """Foto liviana del día para medir la calibración contra los resultados (scripts/resultados.py).
-      lineas   : línea principal de cada jugador-mercado (con «pk», la probabilidad de la casa sin margen, lado «más»)
+      lineas   : línea principal de cada jugador (con nombre «j» y equipo «eq» para mostrar días pasados)-mercado (con «pk», la probabilidad de la casa sin margen, lado «más»)
       escalera : todas las líneas de la escalera {id, gid, m, per, L, cu, p, c}
       sugeridas: la escribe scripts/foto_sugeridas.js; acá solo se conserva.
     Solo partidos que no empezaron (estado 1): después del inicio las líneas ya no son pre-partido.
@@ -595,7 +596,8 @@ def foto_del_dia(fecha, generado_en, partidos, grupos, previa=None):
             continue
         principal = next((x for x in g["pasos"] if x["L"] == g["L"]), None)
         if principal:
-            nuevas.append({"id": g["id"], "gid": g["gid"], "m": g["m"], "per": g["per"], "L": g["L"], "mu": g["mu"],
+            nuevas.append({"id": g["id"], "j": g.get("j"), "eq": g.get("eq"), "gid": g["gid"], "m": g["m"], "per": g["per"],
+                           "L": g["L"], "mu": g["mu"],
                            "sd": g["sd"], "cu_mas": g["cu_mas"], "cu_menos": g["cu_menos"],
                            "p": principal["p"], "pk": principal.get("pk"), "c": principal["c"]})
         for s in g["pasos"]:

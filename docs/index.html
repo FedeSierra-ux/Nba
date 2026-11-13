@@ -7,7 +7,7 @@
 <meta name="description" content="Líneas «más de» de jugadores NBA con todas las escaleras de cuotas, semáforo de riesgo, spread, blowout y armador de combinadas.">
 <meta name="theme-color" content="#0e1116">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23f0a640'/%3E%3Cpath d='M2 16h28M16 2v28M6 6c6 5 6 15 0 20M26 6c-6 5-6 15 0 20' stroke='%230e1116' stroke-width='2' fill='none'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="estilos.css?v=0.5.0">
+<link rel="stylesheet" href="estilos.css?v=0.6.0">
 <script>/* el JSON empieza a bajar ya, en paralelo con el CSS y los scripts. «no-cache» revalida con ETag (304 si no cambió) y nunca muestra datos viejos */
 window.__hoy = fetch('data/hoy.json', { cache: 'no-cache' }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
 window.__hoy.catch(function () {});</script>
@@ -40,11 +40,15 @@ window.__hoy.catch(function () {});</script>
     <span class="sec-txt">Combinada</span>
     <span class="sec-badge" id="tab-ticket" hidden><span id="tab-ticket-n">0</span><span class="sr-only" id="tab-ticket-sr"> patas</span></span>
   </a>
+  <a href="#/mas" data-vista="mas">
+    <svg class="sec-ico" aria-hidden="true" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
+    <span class="sec-txt">Más</span>
+  </a>
 </nav>
 
 <div class="aviso" id="aviso" hidden></div>
 <div class="aviso aviso-ticket" id="aviso-ticket" role="status" hidden>
-  <span id="aviso-ticket-txt"></span> <a href="#/combinada" id="aviso-ticket-ver">Ver combinada</a>
+  <p><span id="aviso-ticket-txt"></span> <a href="#/combinada" id="aviso-ticket-ver">Ver combinada ›</a></p>
   <button type="button" class="cerrar-aviso" id="aviso-ticket-cerrar" aria-label="Cerrar aviso">×</button>
 </div>
 
@@ -128,12 +132,82 @@ window.__hoy.catch(function () {});</script>
     <!-- Vista: Combinadas sugeridas -->
     <section class="vista" id="vista-sugeridas" data-vista="sugeridas" aria-labelledby="h-sug" hidden>
       <div class="seccion-cab"><h2 id="h-sug" tabindex="-1">Combinadas sugeridas del día</h2></div>
-      <p class="ayuda">Armadas con las líneas «más de» de hoy de partidos que no empezaron: para cada nivel se buscan las patas que <b>maximizan la probabilidad</b> con la cuota total mínima indicada. Cargalas en tu combinada para ver el detalle y cambiar cualquier pata o cuota.</p>
+      <section class="armador" aria-labelledby="h-armar">
+        <h3 id="h-armar" class="armador-tit">Armá tu combinada</h3>
+        <p class="ayuda">Elegí la cuota y las reglas: se buscan las patas «más de» que <b>maximizan la probabilidad</b> y llegan a esa cuota. Solo líneas con cuota de Betano, sin dudosos y de partidos que no empezaron.</p>
+        <form id="armar" class="armar-form" novalidate autocomplete="off">
+          <div class="armar-campos">
+            <label class="campo">Cuota objetivo<input id="a-cuota" type="text" inputmode="decimal" value="3,00" enterkeyhint="done"></label>
+            <label class="campo">Patas
+              <select id="a-n"><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10</option></select>
+            </label>
+            <label class="campo">Prob. mínima por pata
+              <select id="a-pmin"><option value="0.5">50%</option><option value="0.55">55%</option><option value="0.6">60%</option><option value="0.65" selected>65%</option><option value="0.7">70%</option><option value="0.75">75%</option><option value="0.8">80%</option><option value="0.85">85%</option></select>
+            </label>
+            <label class="campo">Máximo por partido
+              <select id="a-porjuego"><option value="1" selected>1 pata</option><option value="2">2 patas</option><option value="3">3 patas</option></select>
+            </label>
+          </div>
+          <div class="armar-chips">
+            <div class="chips-fila" id="a-colores" role="group" aria-label="Colores permitidos">
+              <span class="chips-lab" aria-hidden="true">Colores</span>
+              <button type="button" class="sem verde" data-v="verde" aria-pressed="true"><span aria-hidden="true">●</span> Verde</button>
+              <button type="button" class="sem amarillo" data-v="amarillo" aria-pressed="true"><span aria-hidden="true">●</span> Amarillo</button>
+            </div>
+            <div class="chips-fila" id="a-tipos" role="group" aria-label="Tipos de mercado">
+              <span class="chips-lab" aria-hidden="true">Mercados</span>
+              <button type="button" class="chip" data-v="pts" aria-pressed="true">Puntos</button>
+              <button type="button" class="chip" data-v="reb" aria-pressed="true">Rebotes</button>
+              <button type="button" class="chip" data-v="ast" aria-pressed="true">Asistencias</button>
+              <button type="button" class="chip" data-v="combos" aria-pressed="true">Combos</button>
+              <button type="button" class="chip" data-v="otros" aria-pressed="true">Otros</button>
+            </div>
+          </div>
+          <label class="check"><input type="checkbox" id="a-evitar"> Evitar jugadores que ya están en mi combinada</label>
+          <button type="submit" class="btn primario armar-btn">Armar combinada</button>
+        </form>
+        <div id="armar-res" class="armar-res"></div>
+      </section>
+      <h3 class="armador-tit sug-tit">Sugeridas del día</h3>
       <div id="sug-dia" class="comb-grid"></div>
     </section>
 
-    <!-- Vista secundaria: Cómo se calcula (sin pestaña) -->
+    <!-- Vista: Más (índice de secciones secundarias) -->
+    <section class="vista" id="vista-mas" data-vista="mas" aria-labelledby="h-mas" hidden>
+      <div class="seccion-cab"><h2 id="h-mas" tabindex="-1">Más</h2></div>
+      <ul class="hub">
+        <li><a class="hub-item" href="#/resultados">
+          <svg class="hub-ico" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+          <span class="hub-txt"><b>Resultados y calibración</b><small>Cuánto acertó el semáforo y cómo salieron las sugeridas en los días ya jugados.</small></span>
+          <span class="hub-flecha" aria-hidden="true">›</span></a></li>
+        <li><a class="hub-item" href="#/apuestas">
+          <svg class="hub-ico" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h16v12H4zM4 10h16M8 14h3"/></svg>
+          <span class="hub-txt"><b>Mis apuestas</b><small>Lo que apostaste, corregido con los resultados. <span id="hub-apuestas-n"></span></small></span>
+          <span class="hub-flecha" aria-hidden="true">›</span></a></li>
+        <li><a class="hub-item" href="#/metodo">
+          <svg class="hub-ico" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17.5v.01"/></svg>
+          <span class="hub-txt"><b>Cómo se calcula</b><small>De dónde salen los datos, el modelo, el semáforo y sus límites.</small></span>
+          <span class="hub-flecha" aria-hidden="true">›</span></a></li>
+      </ul>
+    </section>
+
+    <!-- Vista: Resultados y calibración -->
+    <section class="vista" id="vista-resultados" data-vista="resultados" aria-labelledby="h-res" hidden>
+      <a class="volver" href="#/mas"><span aria-hidden="true">‹</span> Más</a>
+      <div class="seccion-cab"><h2 id="h-res" tabindex="-1">Resultados y calibración</h2></div>
+      <div id="resultados" class="resultados"><p class="nota">Cargando…</p></div>
+    </section>
+
+    <!-- Vista: Mis apuestas -->
+    <section class="vista" id="vista-apuestas" data-vista="apuestas" aria-labelledby="h-apu" hidden>
+      <a class="volver" href="#/mas"><span aria-hidden="true">‹</span> Más</a>
+      <div class="seccion-cab"><h2 id="h-apu" tabindex="-1">Mis apuestas</h2></div>
+      <div id="apuestas" class="apuestas"></div>
+    </section>
+
+    <!-- Vista secundaria: Cómo se calcula -->
     <section class="vista" id="vista-metodo" data-vista="metodo" aria-labelledby="h-metodo" hidden>
+      <a class="volver" href="#/mas"><span aria-hidden="true">‹</span> Más</a>
       <div class="seccion-cab"><h2 id="h-metodo" tabindex="-1">Cómo se calcula el semáforo y qué límites tiene</h2></div>
       <div id="metodo" class="metodo"></div>
     </section>
@@ -144,17 +218,23 @@ window.__hoy.catch(function () {});</script>
     <div class="ticket-cab">
       <h2 id="h-ticket" tabindex="-1">Mi combinada</h2>
     </div>
+    <div id="vivo" class="envivo" hidden></div>
     <div id="ticket-cuerpo"></div>
+    <div id="registrar" class="registrar" hidden></div>
     <div class="guardadas">
       <h3>Combinadas guardadas</h3>
       <div id="guardadas"></div>
     </div>
   </aside>
 </main>
-<footer class="pie">NBA Semáforo v0.5.0 · <a href="#/metodo">Cómo se calcula</a> · Análisis estadístico, no garantiza resultados. Apostá con responsabilidad.</footer>
+<footer class="pie">NBA Semáforo v0.6.0 · <a href="#/metodo">Cómo se calcula</a> · Análisis estadístico, no garantiza resultados. Apostá con responsabilidad.</footer>
 <div class="sr-only" id="anuncio" aria-live="polite"></div>
-<script src="correlacion.js?v=0.5.0"></script>
-<script src="sugeridas.js?v=0.5.0"></script>
-<script src="app.js?v=0.5.0"></script>
+<script src="correlacion.js?v=0.6.0"></script>
+<script src="sugeridas.js?v=0.6.0"></script>
+<script src="calificar.js?v=0.6.0"></script>
+<script src="resultados.js?v=0.6.0"></script>
+<script src="apuestas.js?v=0.6.0"></script>
+<script src="vivo.js?v=0.6.0"></script>
+<script src="app.js?v=0.6.0"></script>
 </body>
 </html>

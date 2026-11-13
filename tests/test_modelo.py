@@ -98,7 +98,7 @@ class Escalera(unittest.TestCase):
     def grupo(self, **kw):
         f = fila(**kw)
         e = act.evaluar(f, self.CTX)
-        ladder = {"betano": {18.5: 1.20, 20.5: 1.50, 22.5: 1.95, 25.5: 3.00},
+        ladder = {"betano": {17.5: 1.12, 18.5: 1.32, 20.5: 1.50, 22.5: 1.95, 25.5: 3.00},
                   "temp": [24, 26, 25, 27, 23, 25, 26, 24, 28, 22, 25, 26]}
         return act.construir_grupo(f, e, ladder)
 
@@ -117,6 +117,11 @@ class Escalera(unittest.TestCase):
     def test_cuota_justa_es_la_inversa_de_la_probabilidad(self):
         for s in self.grupo()["pasos"]:
             self.assertAlmostEqual(s["ju"], 1 / s["p"], delta=0.02)
+
+    def test_no_hay_lineas_con_cuota_menor_a_1_30(self):
+        g = self.grupo()
+        self.assertNotIn(17.5, [s["L"] for s in g["pasos"]])
+        self.assertTrue(all(s["cu"] >= act.CUOTA_MIN for s in g["pasos"]))
 
     def test_solo_hay_lineas_con_cuota_de_betano_y_nada_de_bet365(self):
         g = self.grupo()

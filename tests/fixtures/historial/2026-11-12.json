@@ -1,0 +1,34 @@
+{
+  "fecha": "2026-11-12",
+  "generado_en": "2026-11-12T22:40:00Z",
+  "lineas": [
+    {"id": 9001, "j": "Marcos Ribeiro", "eq": "NYK", "gid": "0022699001", "m": "pts", "per": null, "L": 18.5, "mu": 21.2, "sd": 5.1, "cu_mas": 1.85, "cu_menos": 1.9, "p": 0.74, "pk": 0.52, "c": "verde"},
+    {"id": 9002, "j": "Tomás Ledesma", "eq": "NYK", "gid": "0022699001", "m": "reb", "per": null, "L": 7.5, "mu": 8.6, "sd": 2.4, "cu_mas": 1.8, "cu_menos": 1.95, "p": 0.71, "pk": 0.53, "c": "verde"},
+    {"id": 9003, "j": "Iván Correa", "eq": "BOS", "gid": "0022699001", "m": "ast", "per": null, "L": 4.5, "mu": 5.6, "sd": 1.9, "cu_mas": 1.75, "cu_menos": 2.0, "p": 0.69, "pk": 0.55, "c": "verde"},
+    {"id": 9004, "j": "Lucas Funes", "eq": "DEN", "gid": "0022699002", "m": "pra", "per": null, "L": 30.5, "mu": 33.0, "sd": 6.0, "cu_mas": 1.85, "cu_menos": 1.9, "p": 0.66, "pk": 0.52, "c": "verde"},
+    {"id": 9005, "j": "Diego Sosa", "eq": "LAL", "gid": "0022699002", "m": "pts", "per": null, "L": 12.5, "mu": 13.4, "sd": 4.4, "cu_mas": 1.85, "cu_menos": 1.9, "p": 0.58, "pk": 0.52, "c": "amarillo"},
+    {"id": 9006, "j": "Nico Paz", "eq": "MIA", "gid": "0022699003", "m": "pts", "per": null, "L": 15.5, "mu": 18.0, "sd": 4.8, "cu_mas": 1.85, "cu_menos": 1.9, "p": 0.7, "pk": 0.52, "c": "verde"},
+    {"id": 9007, "gid": "0022699003", "m": "reb", "per": null, "L": 5.5, "mu": 6.9, "sd": 2.0, "cu_mas": 1.85, "cu_menos": 1.9, "p": 0.68, "pk": 0.52, "c": "verde"},
+    {"id": 9008, "j": "Bruno Vidal", "eq": "LAL", "gid": "0022699002", "m": "reb", "per": null, "L": 6.5, "mu": 6.0, "sd": 2.2, "cu_mas": 1.85, "cu_menos": 1.9, "p": 0.45, "pk": 0.52, "c": "rojo"}
+  ],
+  "escalera": [
+    {"id": 9001, "gid": "0022699001", "m": "pts", "per": null, "L": 16.5, "cu": 1.3, "p": 0.82, "c": "verde"},
+    {"id": 9001, "gid": "0022699001", "m": "pts", "per": null, "L": 18.5, "cu": 1.85, "p": 0.74, "c": "verde"},
+    {"id": 9004, "gid": "0022699002", "m": "pra", "per": null, "L": 28.5, "cu": 1.25, "p": 0.78, "c": "verde"},
+    {"id": 9003, "gid": "0022699001", "m": "ast", "per": null, "L": 3.5, "cu": 1.3, "p": 0.8, "c": "verde"}
+  ],
+  "sugeridas": [
+    {"id": "segura", "nombre": "Segura", "n": 3, "T": 1.99, "cuota": 2.113, "p": 0.51, "legs": [
+      {"id": 9001, "gid": "0022699001", "m": "pts", "per": null, "L": 16.5, "cu": 1.3, "p": 0.82},
+      {"id": 9004, "gid": "0022699002", "m": "pra", "per": null, "L": 28.5, "cu": 1.25, "p": 0.78},
+      {"id": 9003, "gid": "0022699001", "m": "ast", "per": null, "L": 3.5, "cu": 1.3, "p": 0.8}]},
+    {"id": "intermedia", "nombre": "Intermedia", "n": 3, "T": 5, "cuota": 6.33, "p": 0.3, "legs": [
+      {"id": 9001, "gid": "0022699001", "m": "pts", "per": null, "L": 18.5, "cu": 1.85, "p": 0.74},
+      {"id": 9002, "gid": "0022699001", "m": "reb", "per": null, "L": 7.5, "cu": 1.8, "p": 0.71},
+      {"id": 9005, "gid": "0022699002", "m": "pts", "per": null, "L": 12.5, "cu": 1.85, "p": 0.58}]},
+    {"id": "sonadora", "nombre": "Soñadora", "n": 3, "T": 20, "cuota": 6.33, "p": 0.21, "legs": [
+      {"id": 9004, "gid": "0022699002", "m": "pra", "per": null, "L": 30.5, "cu": 1.85, "p": 0.66},
+      {"id": 9006, "gid": "0022699003", "m": "pts", "per": null, "L": 15.5, "cu": 1.85, "p": 0.7},
+      {"id": 9008, "gid": "0022699002", "m": "reb", "per": null, "L": 6.5, "cu": 1.85, "p": 0.45}]}
+  ]
+}
