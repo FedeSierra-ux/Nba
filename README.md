@@ -2,14 +2,15 @@
 
 Página que toma las líneas de jugadores NBA del día, las cruza con spread, riesgo de blowout, back-to-back y lesiones, y les pone un **semáforo de riesgo**. Permite armar combinadas pata por pata viendo la cuota y la probabilidad en vivo.
 
-**Versión 0.1.0**
+**Versión 0.2.0**
 
 ## Qué trae
 
 - **Partidos del día**: spread, total, moneyline, probabilidad de blowout, back-to-back / 3 en 4 y lesiones.
-- **Todas las líneas** (≈3.100): mercados de puntos, rebotes, asistencias, combos, triples, tiros, libres, robos, tapas, pérdidas, faltas, etc. Con cuota de Betano cuando existe, promedios de temporada y últimos 10, historial contra el rival, minutos proyectados y las razones del semáforo.
-- **Semáforo** 🟢🟡🔴 por línea, con filtros por partido, mercado, lado, cuota y búsqueda.
-- **Armador de combinadas**: sumá patas, editá la cuota de cada una (por ejemplo, con la de Stake), mirá cuota total, probabilidad con correlación, ventaja estimada y el semáforo de la combinada. Guarda combinadas en el navegador y arma sugeridas de 3, 4 o 5 patas.
+- **Líneas «más de» con toda su escalera** (≈3.400 jugador-mercado, ≈25.000 líneas): puntos, rebotes, asistencias, combos, triples, tiros, libres, robos, tapas, pérdidas, faltas y primer cuarto. Para cada jugador se muestra la **línea más alta que cumple la probabilidad mínima** que elijas (55 % a 90 %, o la recomendada por el semáforo) y un desplegable con **todas las líneas** (+3,5, +4,5, +5,5…) con cuota de Betano, cuota de bet365, probabilidad, **cuota justa** y semáforo.
+- **Solo «más de» por defecto.** Los «menos» se pueden ver, solo para la línea principal, desde el desplegable.
+- **Semáforo** 🟢🟡🔴 por línea, con filtros por partido, tipo de mercado (puntos, rebotes, asistencias, combos, otros), probabilidad mínima, cuota y búsqueda.
+- **Armador de combinadas**: sumá patas desde cualquier línea de la escalera (elegir otra línea del mismo jugador y mercado reemplaza la anterior), editá la cuota de cada una (por ejemplo, con la de Stake), mirá cuota total, probabilidad con correlación, cuota justa de la combinada, ventaja estimada y el semáforo. Guarda combinadas en el navegador y arma sugeridas de 3, 4 o 5 patas (solo «más de», líneas verdes con probabilidad ≥ 75 % y cuota publicada).
 
 ## Fuentes de datos
 
@@ -18,12 +19,14 @@ Página que toma las líneas de jugadores NBA del día, las cruza con spread, ri
 | Líneas, promedios, minutos, lesiones, cuotas Betano y bet365 | [LudoProps](https://ludoprops.com) | no |
 | Spread, total, moneyline, calendario (back-to-back), lesiones por partido | ESPN (`site.api.espn.com`, DraftKings) | no |
 
+La escalera real de cuotas (Betano y bet365) se baja para **puntos, rebotes y asistencias** (≈ 1 consulta por jugador y mercado, unas 330 por corrida, cerca de 3 minutos). En los demás mercados las líneas faltantes se calculan con el modelo y se muestran sin cuota, con su cuota justa. Para bajar más mercados: `--mercados pts,reb,ast,pra,pr,pa,ra` (o `todos`, ≈1.600 consultas).
+
 **Stake** no tiene API pública (el sitio bloquea consultas automáticas) y los proveedores que la ofrecen son de pago. Por eso la cuota de Stake se escribe a mano en cada pata de la combinada.
 
 ## Uso
 
 ```bash
-python3 scripts/actualizar.py          # baja los datos de hoy y escribe docs/data/hoy.json
+python3 scripts/actualizar.py          # baja los datos de hoy (≈3 min) y escribe docs/data/hoy.json
 python3 -m http.server -d docs 8000    # abrir http://localhost:8000
 ```
 
@@ -44,12 +47,13 @@ node --test tests/correlacion.test.js
 2. **Ajustes de contexto** sobre los minutos proyectados:
    - *Blowout*: spread → probabilidad de que el margen final supere 14,5 puntos (margen ~ Normal(spread, 12)). Se resta la parte por encima de la probabilidad típica (27 %), porque los promedios de temporada ya incluyen paliza.
    - *Back-to-back*: −2 min a titulares en la segunda noche; −1 min en el tercer partido en 4 días.
-3. **Contraste con la casa**: si hay cuota, la probabilidad final es el promedio entre el modelo y la probabilidad de la casa sin margen. Elegir siempre el lado donde el modelo más discrepa sobreestima la probabilidad; la mezcla lo corrige. Sin cuota, el modelo se acerca a 50 % en la misma proporción y la línea no puede ser verde.
-4. **Colores**:
-   - 🟢 probabilidad ≥ 60 %, promedios de temporada / últimos 10 / proyección del mismo lado de la línea (≥ 4 %), al menos dos de tres tasas de acierto a favor y ninguna en contra, ≥ 24 minutos, minutos estables, sin lesión, sin riesgo alto de blowout ni back-to-back, y el modelo no supera a la casa por más de 20 puntos.
+3. **Contraste con la casa**: si hay cuota, la probabilidad final es el promedio entre el modelo y la probabilidad de la casa sin margen (se quita el margen con el sobreprecio de la línea principal). Elegir siempre el lado donde el modelo más discrepa sobreestima la probabilidad; la mezcla lo corrige. Las líneas sin cuota usan la misma corrección que la línea principal del jugador, y si el jugador no tiene cuota en Betano la línea no puede ser verde.
+4. **Escalera**: la probabilidad de «más de X» para cualquier X sale de la misma distribución desplazada con la corrección de la línea principal. Las tasas de acierto se calculan sobre los últimos 10 partidos y, en puntos/rebotes/asistencias, sobre todos los partidos de la temporada.
+5. **Colores** (para cada línea de la escalera):
+   - 🟢 probabilidad ≥ 60 %, promedios de temporada / últimos 10 / proyección por encima de la línea (≥ 4 %), tasas de acierto a favor y ninguna en contra, ≥ 26 minutos proyectados, minutos estables, sin lesión, sin riesgo alto de blowout ni back-to-back (salvo que la línea tenga ≥ 75 % de probabilidad), y el modelo no supera a la casa por más de 20 puntos.
    - 🟡 probabilidad ≥ 55 % con casi todo a favor pero con alguna alerta.
    - 🔴 el resto; automático si es *Questionable/Doubtful*, "no sugerir" del sitio o pocos minutos.
-5. **Combinadas**: la probabilidad conjunta usa una cópula gaussiana (Monte Carlo con semilla fija). Patas del mismo jugador se correlacionan según las estadísticas que comparten; las del mismo partido, levemente; entre partidos distintos se asumen independientes.
+6. **Combinadas**: la probabilidad conjunta usa una cópula gaussiana (Monte Carlo con semilla fija). Patas del mismo jugador se correlacionan según las estadísticas que comparten; las del mismo partido, levemente; entre partidos distintos se asumen independientes.
 
 ## Límites
 

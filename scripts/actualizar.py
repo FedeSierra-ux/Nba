@@ -11,6 +11,7 @@ Uso:
 Solo usa la librería estándar de Python (>= 3.9).
 """
 import argparse, datetime as dt, json, math, os, statistics as st, sys, time, urllib.parse, urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from zoneinfo import ZoneInfo
 
 LUDO = "https://ludoprops.com/api/"
@@ -26,6 +27,7 @@ CV = {  # coeficiente de variación a priori por mercado (heurístico)
     'fga': .30, 'fgm': .38, 'fg3m': .75, 'fg3a': .50, 'fta': .55, 'ftm': .65,
     'tov': .60, 'pf': .55, 'stl': .85, 'blk': 1.0, 'dreb': .55, 'oreb': .80,
     'fg2a': .40, 'fg2m': .50, 'ast_prob': .55, 'reb_prob': .50,
+    '1q_pts': .70, '1q_reb': .90, '1q_ast': 1.0,
 }
 NOMBRE = {
     'pts': 'Puntos', 'reb': 'Rebotes', 'ast': 'Asistencias', 'pra': 'Puntos + Reb + Asist', 'pr': 'Puntos + Rebotes',
@@ -34,6 +36,7 @@ NOMBRE = {
     'fta': 'Libres intentados', 'ftm': 'Libres convertidos', 'tov': 'Pérdidas', 'pf': 'Faltas', 'stl': 'Robos',
     'blk': 'Tapas', 'dreb': 'Rebotes defensivos', 'oreb': 'Rebotes ofensivos', 'fg2a': 'Dobles intentados',
     'fg2m': 'Dobles convertidos', 'ast_prob': 'Asistencias (escalera)', 'reb_prob': 'Rebotes (escalera)',
+    '1q_pts': '1er cuarto: puntos', '1q_reb': '1er cuarto: rebotes', '1q_ast': '1er cuarto: asistencias',
 }
 ESPN_A_TRI = {'NY': 'NYK', 'SA': 'SAS', 'GS': 'GSW', 'NO': 'NOP', 'UTAH': 'UTA', 'WSH': 'WAS'}
 
@@ -59,6 +62,15 @@ def tri(a):
 # --------------------------------------------------------------------------- matemática
 def phi(z):
     return 0.5 * (1 + math.erf(z / math.sqrt(2)))
+
+
+def sig(x):
+    return 1 / (1 + math.exp(-x))
+
+
+def logit(p):
+    p = min(.995, max(.005, p))
+    return math.log(p / (1 - p))
 
 
 def nb_sf(linea, mu, var):
@@ -320,7 +332,22 @@ def evaluar(f, ctx):
 
     def r3(x):
         return None if x is None else round(x, 3)
+
+    # parámetros que reutilizan las demás líneas (escalera) del mismo jugador y mercado
+    p0_main = p_mas(L, mu, sd)
+    k = {
+        "mu": mu, "sd": sd, "prom_t": prom_t if prom_t is not None else m10, "m10": m10, "ult": ult,
+        "min_proy": min_proy, "mins": mins, "bajos": bajos, "n_t": n_t, "est": estado, "completo": completo,
+        "tiene_mercado": casa is not None,
+        "d_modelo": logit(p_modelo) - logit(p0_main),
+        "d_mkt": (logit(p_mkt_over) - logit(p0_main)) if p_mkt_over is not None else None,
+        "overround": (1 / casa["mas"] + 1 / casa["menos"]) if casa else None,
+        "p_over_main": p_over, "L": L, "pct_temp": f.get("pct_temp"), "pct_h2h": f.get("pct_h2h"), "n_h2h": f.get("n_h2h") or 0,
+        "no_sugerir": bool(f.get("no_sugerir")), "rol": f.get("rol"), "cruce": f.get("cruce"),
+        "blow": r, "texto_spread": texto_spread, "b2b": bool(desc.get("b2b")),
+    }
     return {
+        "_k": k,
         "id": f["id"], "j": f["nombre"], "eq": f["equipo"], "riv": f["rival"], "loc": bool(f["local"]),
         "gid": f["game_id"], "pos": f.get("posicion"), "m": merc, "mn": NOMBRE.get(merc, merc),
         "per": f.get("periodo"), "L": L, "lado": lado,
@@ -337,11 +364,190 @@ def evaluar(f, ctx):
     }
 
 
+# --------------------------------------------------------------------------- escalera de líneas ("más de X")
+def banderas_comunes(k):
+    """Banderas que no dependen de la línea: lesión, minutos, muestra. Devuelve (rojo, avisos, graves)."""
+    rojo, fl, graves = [], [], 0
+    if k["est"] in ("Questionable", "Doubtful"):
+        rojo.append(f"lesión: {k['est']}")
+    elif k["est"] == "Probable":
+        fl.append("lesión: Probable")
+    if k["no_sugerir"]:
+        rojo.append('el sitio lo marca "no sugerir"')
+    if k["rol"] == "poco minuto" or k["min_proy"] < 20:
+        rojo.append(f"pocos minutos ({k['min_proy']:.0f})")
+    if k["n_t"] < 6:
+        graves += 1; fl.append(f"muestra chica ({k['n_t']} partidos)")
+    if k["bajos"] >= 2:
+        graves += 1; fl.append(f"minutos inestables ({k['bajos']} de {len(k['mins'])} partidos <70% de lo típico)")
+    if k["min_proy"] < 26:
+        graves += 1; fl.append(f"minutos justos ({k['min_proy']:.0f})")
+    if k["cruce"] == "F":
+        fl.append("cruce F: el rival defiende bien esta posición (poca evidencia)")
+    return rojo, fl, graves
+
+
+def r3(x):
+    return None if x is None else round(x, 3)
+
+
+def paso(k, L, cu, cb, temp, principal, com):
+    """Evalúa 'más de L' para un jugador y mercado. cu = cuota Betano, cb = cuota bet365 (si existen)."""
+    rojo, fl_com, graves = com
+    p0 = p_mas(L, k["mu"], k["sd"])
+    p_modelo = sig(logit(p0) + k["d_modelo"])
+    real = bool(cu and k["overround"])
+    if real:
+        p_mkt = min(.99, (1 / cu) / k["overround"])
+    elif k["d_mkt"] is not None:
+        p_mkt = sig(logit(p0) + k["d_mkt"])
+    else:
+        p_mkt = None
+    p = .5 * p_modelo + .5 * p_mkt if p_mkt is not None else .5 * p_modelo + .25
+
+    ult = k["ult"]
+    r10 = sum(1 for v in ult if v > L) / len(ult)
+    if temp and len(temp) >= 6:
+        rt = sum(1 for v in temp if v > L) / len(temp)
+    elif principal and k["pct_temp"] is not None:
+        rt = k["pct_temp"]
+    else:
+        rt = None
+    rh = k["pct_h2h"] if (principal and k["n_h2h"] >= 4 and k["pct_h2h"] is not None) else None
+    senales = [x for x in (r10, rt, rh) if x is not None]
+    a_favor = sum(1 for x in senales if x >= .6)
+    en_contra = sum(1 for x in senales if x <= .4)
+    prom_ok = sum(1 for x in (k["prom_t"], k["m10"], k["mu"]) if (x - L) / L >= .04)
+    prom_mal = sum(1 for x in (k["prom_t"], k["m10"], k["mu"]) if (x - L) / L <= -.04)
+
+    fl, g = [], graves
+    if en_contra >= 1:
+        g += 1; fl.append("historial en contra")
+    if real and p_modelo - p_mkt > .20:
+        g += 2; fl.append(f"el modelo lo ve mucho más probable que la casa ({p_modelo:.0%} vs {p_mkt:.0%})")
+    tope = False
+    r = k["blow"]
+    if p < .75 and r is not None and k["min_proy"] >= 26:
+        if r >= .45:
+            tope = True; fl.append(f"riesgo de blowout alto ({k['texto_spread']}): titulares pueden sentarse")
+        elif r >= .38:
+            fl.append(f"riesgo de blowout medio ({k['texto_spread']})")
+    if p < .75 and k["b2b"] and k["min_proy"] >= 28:
+        tope = True; fl.append("back-to-back")
+    if not k["completo"] or not k["tiene_mercado"]:
+        tope = True
+
+    ok_senales = (a_favor >= 2 and en_contra == 0) if len(senales) >= 2 else (len(senales) == 1 and senales[0] >= .7)
+    if rojo:
+        color = "rojo"
+    elif p >= .60 and prom_ok == 3 and ok_senales and g == 0 and k["min_proy"] >= 24 and k["est"] is None:
+        color = "verde"
+    elif p >= .55 and prom_mal == 0 and prom_ok >= 2 and g <= 1 and en_contra == 0:
+        color = "amarillo"
+    else:
+        color = "rojo"
+    if tope and color == "verde":
+        color = "amarillo"
+    out = {"L": L, "cu": cu, "cb": cb, "p": r3(p), "pm": r3(p_modelo), "pk": r3(p_mkt), "ju": round(1 / max(p, .01), 2),
+           "c": color, "r10": r3(r10), "rt": r3(rt)}
+    if fl:
+        out["fl"] = fl
+    return out
+
+
+def lineas_sinteticas(k, existentes):
+    """Líneas 'más de X' calculadas con el modelo para completar la escalera donde la casa no ofrece cuota."""
+    mu, sd = k["mu"], k["sd"]
+    salto = 1 if mu < 14 else 2 if mu < 30 else 3
+    tope = int(mu + 1.5 * sd) + 1
+    res = []
+    L = .5
+    while L <= tope:
+        if all(abs(L - e) > .01 for e in existentes) and .08 <= p_mas(L, mu, sd) <= .97:
+            res.append(L)
+        L += salto
+    res.sort(key=lambda x: abs(x - k["L"]))
+    return res[:12]
+
+
+def construir_grupo(f, e, ladder):
+    """Un jugador + mercado con todas sus líneas 'más de'. `e` es el resultado de evaluar()."""
+    k = e.pop("_k")
+    rojo, fl_com, graves = banderas_comunes(k)
+    extra = []
+    if not k["completo"]:
+        extra.append("modelo básico (sin proyección del sitio)")
+    if not k["tiene_mercado"]:
+        extra.append("sin cuota en Betano (no se puede contrastar con la casa)")
+    betano = dict(ladder["betano"]) if ladder else {}
+    b365 = dict(ladder["b365"]) if ladder else {}
+    casa = f.get("casa")
+    if casa:
+        betano[f["linea"]] = casa["mas"]
+    if f.get("b365"):
+        b365.setdefault(f["linea"], f["b365"])
+    temp = ladder["temp"] if ladder else None
+    lineas = set(betano) | set(b365) | {f["linea"]}
+    lineas |= set(lineas_sinteticas(k, lineas))
+    pasos = []
+    for L in sorted(lineas):
+        if L <= 0:
+            continue
+        s = paso(k, L, betano.get(L), b365.get(L), temp, L == f["linea"], (rojo, fl_com, graves))
+        if .06 <= s["p"] <= .985 or L == f["linea"] or betano.get(L):
+            pasos.append(s)
+    rec = None
+    for color in ("verde", "amarillo"):
+        cand = [s for s in pasos if s["c"] == color]
+        if cand:
+            rec = max(cand, key=lambda s: s["L"])["L"]
+            break
+    if rec is None:
+        rec = max(pasos, key=lambda s: s["p"])["L"]
+    g = {k2: e[k2] for k2 in ("id", "j", "eq", "riv", "loc", "gid", "pos", "m", "mn", "per", "mu", "sd", "pt", "p10", "n",
+                                "ult", "min", "min_ult", "rol", "est", "cruce", "dvp", "aj", "mod") if k2 in e}
+    g.update({"L": f["linea"], "temp": temp, "fl": rojo + fl_com + extra, "rec": rec, "pasos": pasos,
+              "cu_mas": casa["mas"] if casa else None, "cu_menos": casa["menos"] if casa else None})
+    if casa:
+        p_menos = 1 - k["p_over_main"]
+        g["menos"] = {"L": f["linea"], "cu": casa["menos"], "p": r3(p_menos),
+                      "c": e["c"] if e["lado"] == "menos" else "rojo", "ju": round(1 / max(p_menos, .01), 2)}
+    return g
+
+
+def bajar_escaleras(filas, mercados, avisos, hilos=2, pausa=0.2):
+    """Escalera de cuotas (Betano / bet365) y partidos de la temporada, por jugador y mercado. ~1 s por consulta."""
+    objetivo = sorted({(f["id"], f["mercado"]) for f in filas
+                       if f["mercado"] in mercados and f.get("casa") and f.get("periodo") is None and f.get("ult")})
+    res = {}
+
+    def uno(par):
+        time.sleep(pausa)
+        d = pedir(f"{LUDO}ficha?id={par[0]}&prop={par[1]}&rango=temp", intentos=2, espera=1.5)
+        betano = {float(x["linea"]): float(x["cuota"]) for x in d.get("betano_esc") or []}
+        b365 = {float(x["linea"]): float(x["cuota"]) for x in (d.get("b365") or {}).get("escalera") or []}
+        temp = [g["valor"] for g in d.get("grafico") or [] if g.get("valor") is not None]
+        return {"betano": betano, "b365": b365, "temp": temp}
+
+    with ThreadPoolExecutor(hilos) as ex:
+        futs = {par: ex.submit(uno, par) for par in objetivo}
+        for par, fu in futs.items():
+            try:
+                res[par] = fu.result()
+            except Exception as e:  # noqa: BLE001
+                avisos.append(f"ficha {par}: {e}")
+    return res
+
+
 # --------------------------------------------------------------------------- principal
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--fecha", help="AAAA-MM-DD (hora ET). Por defecto, hoy en Nueva York.")
     ap.add_argument("--salida", default=os.path.join(os.path.dirname(__file__), "..", "docs", "data"))
+    ap.add_argument("--mercados", default="pts,reb,ast",
+                    help="Mercados para los que se baja la escalera real de cuotas (≈1 consulta por jugador y mercado). "
+                         "'todos' baja todos (lento, ≈1.600 consultas). Los demás usan líneas calculadas por el modelo.")
+    ap.add_argument("--hilos", type=int, default=2, help="Consultas simultáneas a LudoProps (se recomienda 1-2).")
     a = ap.parse_args()
     fecha = a.fecha or dt.datetime.now(ZoneInfo("America/New_York")).date().isoformat()
     avisos = []
@@ -352,13 +558,18 @@ def main():
         print(f"No hay partidos NBA el {fecha}.")
     ctx = contexto_partidos(fecha, tab.get("partidos", []), avisos)
 
-    filas = []
+    mercados = set(CV) if a.mercados == "todos" else {m.strip() for m in a.mercados.split(",") if m.strip()}
+    escaleras = bajar_escaleras(tab.get("filas", []), mercados, avisos, hilos=a.hilos)
+
+    grupos = []
     for f in tab.get("filas", []):
         e = evaluar(f, ctx)
         if e:
-            filas.append(e)
+            grupos.append(construir_grupo(f, e, escaleras.get((f["id"], f["mercado"]))))
     orden = {'verde': 0, 'amarillo': 1, 'rojo': 2}
-    filas.sort(key=lambda x: (orden[x['c']], -(x['p'] or 0)))
+    def color_rec(g):
+        return next(x["c"] for x in g["pasos"] if x["L"] == g["rec"])
+    grupos.sort(key=lambda g: orden[color_rec(g)])
 
     partidos = []
     for p in tab["partidos"]:
@@ -378,16 +589,25 @@ def main():
         "ludo_version": ver.get("v"), "reporte_lesiones": ver.get("reporte"),
         "avisos": avisos,
         "modelo": {"sd_partido": SD_PARTIDO, "umbral_blowout": UMBRAL_BLOWOUT, "r0": R0},
-        "partidos": partidos, "filas": filas,
+        "partidos": partidos, "grupos": grupos,
     }
     os.makedirs(a.salida, exist_ok=True)
     os.makedirs(os.path.join(a.salida, "historial"), exist_ok=True)
     txt = json.dumps(salida, ensure_ascii=False, separators=(",", ":"))
-    for ruta in (os.path.join(a.salida, "hoy.json"), os.path.join(a.salida, "historial", fecha + ".json")):
-        with open(ruta, "w", encoding="utf-8") as fh:
-            fh.write(txt)
-    cuenta = {c: sum(1 for x in filas if x['c'] == c) for c in orden}
-    print(f"{fecha}: {len(partidos)} partidos, {len(filas)} líneas {cuenta}, {len(txt)/1e6:.1f} MB, avisos: {len(avisos)}")
+    with open(os.path.join(a.salida, "hoy.json"), "w", encoding="utf-8") as fh:
+        fh.write(txt)
+    # Foto liviana del día (solo la línea principal de cada jugador) para medir la calibración más adelante.
+    foto = {"fecha": fecha, "generado_en": salida["generado_en"], "lineas": [
+        {"id": g["id"], "m": g["m"], "per": g["per"], "L": g["L"], "mu": g["mu"], "sd": g["sd"],
+         "cu_mas": g["cu_mas"], "cu_menos": g["cu_menos"],
+         "p": next(x["p"] for x in g["pasos"] if x["L"] == g["L"]),
+         "c": next(x["c"] for x in g["pasos"] if x["L"] == g["L"])} for g in grupos]}
+    with open(os.path.join(a.salida, "historial", fecha + ".json"), "w", encoding="utf-8") as fh:
+        json.dump(foto, fh, ensure_ascii=False, separators=(",", ":"))
+    cuenta = {c: sum(1 for x in grupos if color_rec(x) == c) for c in orden}
+    n_pasos = sum(len(g["pasos"]) for g in grupos)
+    print(f"{fecha}: {len(partidos)} partidos, {len(grupos)} jugador-mercado ({n_pasos} líneas) {cuenta}, "
+          f"{len(escaleras)} escaleras reales, {len(txt)/1e6:.1f} MB, avisos: {len(avisos)}")
     for av in avisos:
         print("  aviso:", av, file=sys.stderr)
 

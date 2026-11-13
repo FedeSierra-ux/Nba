@@ -130,3 +130,25 @@ h2 { font-size: 18px; margin: 0; } h3 { font-size: 14px; margin: 0 0 8px; color:
 @media (prefers-reduced-motion: reduce) { .ticket { transition: none; } }
 
 .pie { text-align: center; color: var(--suave); font-size: 12px; padding: 18px 16px 28px; }
+
+/* v0.2: escalera de líneas, filtros de probabilidad */
+.ayuda { margin: 0 0 12px; color: var(--suave); font-size: 13.5px; }
+.chips-grupo { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.campo { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--suave); }
+.campo select { background: var(--panel); border: 1px solid var(--borde); border-radius: 8px; padding: 7px 10px; color: var(--texto); }
+.filtros.chico { margin-top: -4px; }
+.precio { font-size: 13px; color: var(--suave); }
+.precio small { color: var(--suave); }
+.desplegar { border: 1px solid var(--borde); background: transparent; border-radius: 8px; padding: 6px 10px; font-size: 13px; color: var(--suave); white-space: nowrap; }
+.desplegar:hover { color: var(--texto); border-color: var(--acento); }
+.l-escalera { grid-column: 1 / -1; border-top: 1px dashed var(--borde); padding-top: 10px; margin-top: 2px; overflow-x: auto; }
+.escalera table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.escalera th { text-align: left; color: var(--suave); font-weight: 500; font-size: 12px; padding: 4px 8px; }
+.escalera td { padding: 5px 8px; border-top: 1px solid var(--borde); }
+.escalera tr.sel td { background: color-mix(in srgb, var(--acento) 14%, transparent); }
+.escalera tr.menos td { opacity: .8; border-top: 2px solid var(--borde); }
+.punto-mini { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--borde); }
+.paso.c-verde .punto-mini { background: var(--verde); } .paso.c-amarillo .punto-mini { background: var(--amarillo); } .paso.c-rojo .punto-mini { background: var(--rojo); }
+.add.chico { padding: 3px 9px; min-width: 32px; text-align: center; }
+@media (max-width: 640px) { .l-botones .desplegar { grid-column: 1 / 3; } }
+@media (max-width: 640px) { .escalera td, .escalera th { padding: 5px 4px; } .escalera table { font-size: 13px; } .add.chico { min-width: 28px; padding: 3px 6px; } }

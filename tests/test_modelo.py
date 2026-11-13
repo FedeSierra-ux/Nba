@@ -92,3 +92,52 @@ class Semaforo(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Escalera(unittest.TestCase):
+    CTX = {"g1": {"p_blowout": 0.25, "spread": 3.0, "descanso": {"AAA": {"b2b": False, "tres_en_cuatro": False}}}}
+
+    def grupo(self, **kw):
+        f = fila(**kw)
+        e = act.evaluar(f, self.CTX)
+        ladder = {"betano": {18.5: 1.20, 20.5: 1.50, 22.5: 1.95, 25.5: 3.00},
+                  "b365": {19.5: 1.25},
+                  "temp": [24, 26, 25, 27, 23, 25, 26, 24, 28, 22, 25, 26]}
+        return act.construir_grupo(f, e, ladder)
+
+    def test_la_probabilidad_baja_al_subir_la_linea(self):
+        g = self.grupo()
+        ps = [s["p"] for s in g["pasos"]]
+        self.assertEqual(ps, sorted(ps, reverse=True))
+
+    def test_lineas_bajas_son_mas_seguras_y_la_recomendada_es_verde(self):
+        g = self.grupo()
+        bajo = next(s for s in g["pasos"] if s["L"] == 18.5)
+        alto = next(s for s in g["pasos"] if s["L"] == 25.5)
+        self.assertGreater(bajo["p"], alto["p"])
+        rec = next(s for s in g["pasos"] if s["L"] == g["rec"])
+        self.assertEqual(rec["c"], "verde")
+        self.assertGreaterEqual(rec["L"], 20.5)   # la línea más alta que todavía es verde
+
+    def test_cuota_justa_es_la_inversa_de_la_probabilidad(self):
+        for s in self.grupo()["pasos"]:
+            self.assertAlmostEqual(s["ju"], 1 / s["p"], delta=0.02)
+
+    def test_cuotas_de_las_dos_casas_se_asignan_a_su_linea(self):
+        g = self.grupo()
+        self.assertEqual(next(s for s in g["pasos"] if s["L"] == 19.5)["cb"], 1.25)
+        self.assertEqual(next(s for s in g["pasos"] if s["L"] == 22.5)["cu"], 1.95)
+
+    def test_completa_con_lineas_del_modelo_sin_cuota(self):
+        g = self.grupo()
+        sinteticas = [s for s in g["pasos"] if s["cu"] is None and s["cb"] is None]
+        self.assertTrue(sinteticas)
+
+    def test_incluye_la_linea_menos_de_la_principal(self):
+        g = self.grupo()
+        self.assertEqual(g["menos"]["L"], 20.5)
+        self.assertAlmostEqual(g["menos"]["p"] + next(s for s in g["pasos"] if s["L"] == 20.5)["p"], 1.0, delta=0.01)
+
+    def test_lesionado_deja_toda_la_escalera_en_rojo(self):
+        g = self.grupo(estado="Questionable")
+        self.assertTrue(all(s["c"] == "rojo" for s in g["pasos"]))

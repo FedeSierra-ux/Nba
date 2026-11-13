@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>NBA Semáforo</title>
-<meta name="description" content="Líneas de jugadores NBA con semáforo de riesgo, spread, blowout y armador de combinadas.">
+<meta name="description" content="Líneas «más de» de jugadores NBA con todas las escaleras de cuotas, semáforo de riesgo, spread, blowout y armador de combinadas.">
 <meta name="theme-color" content="#0e1116">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23f0a640'/%3E%3Cpath d='M2 16h28M16 2v28M6 6c6 5 6 15 0 20M26 6c-6 5-6 15 0 20' stroke='%230e1116' stroke-width='2' fill='none'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="estilos.css">
@@ -32,31 +32,52 @@
 
     <section aria-labelledby="h-lineas">
       <div class="seccion-cab">
-        <h2 id="h-lineas">Líneas</h2>
+        <h2 id="h-lineas">Líneas «más de»</h2>
         <span class="contador" id="contador"></span>
+      </div>
+      <p class="ayuda">Cada jugador muestra la <b>línea más alta</b> que todavía cumple la probabilidad mínima que elijas (o la recomendada por el semáforo). Tocá <b>«Ver todas las líneas»</b> para ver las demás con su cuota, probabilidad y cuota justa.</p>
+
+      <div class="chips-grupo" id="f-grupo" role="group" aria-label="Tipo de mercado">
+        <button type="button" class="chip" data-g="todos" aria-pressed="true">Todos</button>
+        <button type="button" class="chip" data-g="pts" aria-pressed="false">Puntos</button>
+        <button type="button" class="chip" data-g="reb" aria-pressed="false">Rebotes</button>
+        <button type="button" class="chip" data-g="ast" aria-pressed="false">Asistencias</button>
+        <button type="button" class="chip" data-g="combos" aria-pressed="false">P+R+A y combos</button>
+        <button type="button" class="chip" data-g="otros" aria-pressed="false">Otros</button>
       </div>
 
       <div class="filtros" role="group" aria-label="Filtros">
+        <label class="campo">Probabilidad mínima
+          <select id="f-prob">
+            <option value="rec">Recomendada (semáforo)</option>
+            <option value="0.55">55%</option><option value="0.60">60%</option><option value="0.65">65%</option>
+            <option value="0.70" selected>70%</option><option value="0.75">75%</option><option value="0.80">80%</option>
+            <option value="0.85">85%</option><option value="0.90">90%</option>
+          </select>
+        </label>
         <div class="grupo-colores" id="f-color" role="group" aria-label="Semáforo">
           <button type="button" class="sem verde" data-c="verde" aria-pressed="true">● Verde <i id="n-verde"></i></button>
           <button type="button" class="sem amarillo" data-c="amarillo" aria-pressed="true">● Amarillo <i id="n-amarillo"></i></button>
           <button type="button" class="sem rojo" data-c="rojo" aria-pressed="false">● Rojo <i id="n-rojo"></i></button>
         </div>
         <input id="f-q" type="search" placeholder="Buscar jugador o equipo" aria-label="Buscar jugador o equipo" autocomplete="off">
-        <select id="f-mercado" aria-label="Mercado"><option value="">Todos los mercados</option></select>
-        <select id="f-lado" aria-label="Lado recomendado">
-          <option value="">Más y Menos</option><option value="mas">Solo Más</option><option value="menos">Solo Menos</option>
-        </select>
+        <select id="f-mercado" aria-label="Mercado exacto"><option value="">Cualquier mercado</option></select>
         <select id="f-orden" aria-label="Ordenar por">
-          <option value="p">Semáforo y probabilidad</option><option value="cuota">Mayor cuota</option>
-          <option value="ev">Mayor ventaja vs. cuota</option><option value="min">Más minutos</option>
+          <option value="cuota">Mayor cuota</option>
+          <option value="p">Mayor probabilidad</option>
+          <option value="sem">Semáforo y probabilidad</option>
+          <option value="ev">Mayor ventaja vs. cuota</option>
+          <option value="min">Más minutos</option>
         </select>
-        <label class="check"><input type="checkbox" id="f-cuota"> Solo con cuota</label>
+      </div>
+      <div class="filtros chico">
+        <label class="check"><input type="checkbox" id="f-cuota"> Solo líneas con cuota de la casa</label>
         <label class="check"><input type="checkbox" id="f-completo"> Solo modelo completo</label>
+        <label class="check"><input type="checkbox" id="f-menos"> Mostrar también «menos» en el desplegable</label>
       </div>
 
       <div id="lineas" class="lineas"></div>
-      <button type="button" class="mas-btn" id="ver-mas" hidden>Ver más líneas</button>
+      <button type="button" class="mas-btn" id="ver-mas" hidden>Ver más jugadores</button>
     </section>
 
     <details class="metodo">
@@ -74,7 +95,7 @@
     <div class="sugeridas">
       <h3>Armar sugerida</h3>
       <div class="sug-botones" id="sugeridas"></div>
-      <p class="nota">Una pata por partido, mezclando mercados; solo líneas verdes.</p>
+      <p class="nota">Una pata por partido, solo «más de» en líneas verdes con probabilidad ≥ 75% y cuota publicada.</p>
     </div>
     <div class="guardadas">
       <h3>Combinadas guardadas</h3>
@@ -82,7 +103,7 @@
     </div>
   </aside>
 </main>
-<footer class="pie">NBA Semáforo v0.1.0 · Análisis estadístico, no garantiza resultados. Apostá con responsabilidad.</footer>
+<footer class="pie">NBA Semáforo v0.2.0 · Análisis estadístico, no garantiza resultados. Apostá con responsabilidad.</footer>
 <div class="fondo" id="fondo" hidden></div>
 <script src="correlacion.js"></script>
 <script src="app.js"></script>
