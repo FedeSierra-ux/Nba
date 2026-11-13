@@ -90,8 +90,6 @@ class Semaforo(unittest.TestCase):
         self.assertGreater(e["p"], 0.5)
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 class Escalera(unittest.TestCase):
@@ -146,6 +144,52 @@ class Escalera(unittest.TestCase):
         g = self.grupo()
         self.assertTrue(all(s["p"] <= act.P_MAX + 1e-9 for s in g["pasos"]))
         self.assertTrue(all(s["ju"] >= 1 / act.P_MAX - 0.02 for s in g["pasos"]))
+
+
+class Regresiones(unittest.TestCase):
+    """Bugs encontrados en la revisión: cada prueba reproduce uno."""
+    CTX = {"g1": {"p_blowout": 0.25, "spread": 3.0, "descanso": {"AAA": {}}}}
+
+    def test_jugador_out_o_suspendido_va_a_rojo(self):
+        for est in ("Out", "Suspension", "Day-To-Day"):
+            f = fila(estado=est)
+            g = act.construir_grupo(f, act.evaluar(f, self.CTX), None)
+            self.assertTrue(all(s["c"] == "rojo" for s in g["pasos"]), est)
+
+    def test_menos_respeta_el_techo(self):
+        f = fila(linea=40.5, media=20.0, prob=0.01, pct_ult=0.0, pct_temp=0.0, pct_h2h=0.0,
+                 casa={"nombre": "Betano", "mas": 15.0, "menos": 1.01, "prob": 0.06})
+        g = act.construir_grupo(f, act.evaluar(f, self.CTX), None)
+        self.assertLessEqual(g["menos"]["p"], act.P_MAX + 1e-9)
+
+    def test_casa_sin_menos_no_rompe(self):
+        f = fila(casa={"nombre": "Betano", "mas": 1.5, "menos": None, "prob": 0.6})
+        g = act.construir_grupo(f, act.evaluar(f, self.CTX), None)
+        self.assertIsNotNone(g)
+        self.assertNotIn("menos", g)
+
+    def test_casa_sin_mas_no_hay_grupo(self):
+        f = fila(casa={"nombre": "Betano", "mas": None, "menos": 1.8, "prob": 0.4})
+        self.assertIsNone(act.construir_grupo(f, act.evaluar(f, self.CTX), None))
+
+    def test_ult_con_nulos_y_linea_cero(self):
+        self.assertIsNotNone(act.evaluar(fila(ult=[25, None, 24, 26, 23, 25]), self.CTX))
+        self.assertIsNone(act.evaluar(fila(linea=0.0), self.CTX))
+
+    def test_probabilidad_continua_al_cruzar_6(self):
+        for L, sd in ((5.5, 2.6), (6.5, 2.6), (7.5, 3.0)):
+            self.assertLess(abs(act.p_mas(L, 5.999, sd) - act.p_mas(L, 6.0, sd)), 0.005)
+            self.assertLess(abs(act.p_mas(L, 3.999, sd) - act.p_mas(L, 4.0, sd)), 0.005)
+            self.assertLess(abs(act.p_mas(L, 7.999, sd) - act.p_mas(L, 8.0, sd)), 0.005)
+
+    def test_corrimiento_de_escalera_acotado(self):
+        f = fila(linea=35.5, media=20.0, prob=0.05, pct_ult=0.0, pct_temp=0.0, pct_h2h=0.0,
+                 casa={"nombre": "Betano", "mas": 9.0, "menos": 1.05, "prob": 0.1})
+        e = act.evaluar(f, self.CTX)
+        self.assertLessEqual(abs(e["_k"]["d_modelo"]), 1.0)
+        g = act.construir_grupo(f, e, {"betano": {20.5: 1.9, 35.5: 9.0}, "temp": None})
+        p205 = next(s for s in g["pasos"] if s["L"] == 20.5)
+        self.assertLess(p205["pm"], 0.8)   # sin acotar daba 0,968 para una línea por encima de la media
 
 
 if __name__ == "__main__":

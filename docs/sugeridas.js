@@ -22,7 +22,7 @@
     grupos.forEach(function (g) {
       if (excluidos && excluidos[g.id]) return;
       if (g.mod !== 'completo') return;                                  // solo con proyección del sitio
-      if (g.est && /Questionable|Doubtful/.test(g.est)) return;          // dudosos fuera
+      if (g.est && g.est !== 'Probable') return;                         // cualquier estado de lesión salvo Probable queda fuera
       g.pasos.forEach(function (s) {
         var cu = cuotaDe(s);
         if (cu == null || cu < nivel.cmin) return;                       // sin patas de relleno que no aportan cuota

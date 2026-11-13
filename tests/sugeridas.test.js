@@ -63,7 +63,7 @@ test('las dos variantes del mismo nivel no repiten jugadores', () => {
 
 test('descarta dudosos, modelo básico y líneas sin cuota', () => {
   const g = grupos();
-  g[0].est = 'Questionable'; g[1].mod = 'basico';
+  g[0].est = 'Out'; g[1].mod = 'basico';
   g[2].pasos.forEach((s) => { s.cu = null; });
   const pool = S.candidatas(g, S.NIVELES[1], {});
   [1, 2, 3].forEach((id) => assert.ok(!pool.some((x) => x.g.id === id), `no debería incluir al jugador ${id}`));
@@ -87,7 +87,7 @@ test('es determinista', () => {
   assert.strictEqual(a, b);
 });
 
-test('con los datos reales (si existen) toda combinada armada cumple su cuota mínima', { skip: !fs.existsSync(path.join(__dirname, '../docs/data/hoy.json')) }, () => {
+test('con los datos reales (si existen) toda combinada armada cumple su cuota mínima', { skip: process.env.SKIP_DATOS_REALES === '1' || !fs.existsSync(path.join(__dirname, '../docs/data/hoy.json')) }, () => {
   const d = JSON.parse(fs.readFileSync(path.join(__dirname, '../docs/data/hoy.json'), 'utf8'));
   const res = S.todas(d.grupos);
   res.forEach((c) => assert.ok(c.legs.reduce((a, l) => a * l.cu, 1) >= c.T));

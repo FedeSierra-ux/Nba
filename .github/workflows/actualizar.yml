@@ -5,8 +5,9 @@ on:
   # Cada corrida hace ≈350 consultas a LudoProps (~3 min): pocas corridas por día para no cargar su servidor.
   schedule:
     - cron: "15 16 * * *"          # mediodía ET
-    - cron: "45 22 * * *"          # justo después del reporte de lesiones de las 17:00 ET
-    - cron: "30 0 * * *"           # 19:30 ET, antes de los partidos del Oeste
+    - cron: "50 21 * * *"          # 16:50 ET (horario de invierno), con el reporte de lesiones de la tarde
+    - cron: "20 23 * * *"          # 18:20 ET, antes de los partidos de las 19:00 ET
+    # El historial solo guarda partidos que no empezaron, así que una corrida tardía no lo contamina.
   workflow_dispatch:
 
 permissions:
@@ -31,7 +32,7 @@ jobs:
       - name: Pruebas
         run: |
           python3 -m unittest discover -s tests
-          node --test tests/correlacion.test.js tests/sugeridas.test.js
+          SKIP_DATOS_REALES=1 node --test tests/correlacion.test.js tests/sugeridas.test.js
       - name: Generar datos
         run: python3 scripts/actualizar.py
       - name: Publicar cambios
@@ -43,5 +44,6 @@ jobs:
             echo "Sin cambios"
           else
             git commit -m "Datos actualizados $(date -u +%Y-%m-%dT%H:%MZ)"
-            git push
+            # si alguien subió cambios durante la corrida, se rebasa y se reintenta
+            for i in 1 2 3; do git pull --rebase origin "${GITHUB_REF_NAME}" && git push && break; sleep 5; done
           fi

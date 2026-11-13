@@ -23,6 +23,7 @@ SD_PARTIDO = 12.0        # desvío del margen final de un partido NBA (puntos)
 UMBRAL_BLOWOUT = 14.5    # margen a partir del cual los titulares suelen sentarse
 P_MAX = 0.96            # techo de probabilidad por línea (lesión en el partido, faltas, minutos de basura)
 P_MAX_MODELO = 0.97
+ESTADOS_ROJO = {"Questionable", "Doubtful", "Out", "Suspension", "Suspended", "Inactive", "Day-To-Day"}
 R0 = 0.27                # probabilidad de blowout "típica" (ya incluida en los promedios de temporada)
 CV = {  # coeficiente de variación a priori por mercado (heurístico)
     'pts': .38, 'reb': .50, 'ast': .55, 'pra': .30, 'pr': .32, 'pa': .33, 'ra': .42,
@@ -44,12 +45,12 @@ ESPN_A_TRI = {'NY': 'NYK', 'SA': 'SAS', 'GS': 'GSW', 'NO': 'NOP', 'UTAH': 'UTA',
 
 
 # --------------------------------------------------------------------------- red
-def pedir(url, intentos=3, espera=2.0):
+def pedir(url, intentos=3, espera=2.0, timeout=60):
     ultimo = None
     for i in range(intentos):
         try:
             req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "application/json"})
-            with urllib.request.urlopen(req, timeout=60) as r:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
                 return json.load(r)
         except Exception as e:  # noqa: BLE001
             ultimo = e
@@ -93,11 +94,18 @@ def nb_sf(linea, mu, var):
 
 
 def p_mas(linea, mu, sd):
+    """P(X > linea). Binomial negativa para medias chicas, normal para grandes, y una mezcla entre 4 y 8
+    para que la probabilidad no salte al cruzar un umbral."""
     if mu <= 0:
         return 0.0
-    if mu < 6:
-        return nb_sf(linea, mu, sd * sd)
-    return 1 - phi((linea - mu) / sd)
+    pn = 1 - phi((linea - mu) / sd)
+    if mu >= 8:
+        return pn
+    pb = nb_sf(linea, mu, sd * sd)
+    if mu <= 4:
+        return pb
+    w = (mu - 4) / 4
+    return (1 - w) * pb + w * pn
 
 
 def prob_blowout(spread):
@@ -133,6 +141,9 @@ def contexto_partidos(fecha, partidos_ludo, avisos):
     jugaron = {i: set() for i in range(1, 4)}
     for i in range(1, 4):
         for ev in juegos.get(i) or []:
+            estado_ev = (((ev.get("status") or {}).get("type") or {}).get("name") or "")
+            if estado_ev in ("STATUS_POSTPONED", "STATUS_CANCELED", "STATUS_SUSPENDED"):
+                continue
             for c in ev["competitions"][0]["competitors"]:
                 jugaron[i].add(tri(c["team"]["abbreviation"]))
 
@@ -145,7 +156,7 @@ def contexto_partidos(fecha, partidos_ludo, avisos):
     info = {}
     for p in partidos_ludo:
         loc, vis = p["local"], p["visita"]
-        ev = por_equipos.get((loc, vis))
+        ev = por_equipos.get((loc, vis)) or por_equipos.get((vis, loc))
         r = {"spread": None, "fav": None, "total": None, "ml": {}, "proveedor": None, "espn_id": None,
              "records": {}, "lesiones": {}, "ultimos5": {}}
         if ev:
@@ -164,19 +175,28 @@ def contexto_partidos(fecha, partidos_ludo, avisos):
                     away_fav = (odds.get("awayTeamOdds") or {}).get("favorite")
                     home_fav = (odds.get("homeTeamOdds") or {}).get("favorite")
                     r["fav"] = vis if away_fav else loc if home_fav else None
+                    if r["fav"] is None:
+                        det = str(odds.get("details") or "").split()
+                        if len(det) == 2 and det[1].startswith("-"):
+                            cand = tri(det[0])
+                            r["fav"] = cand if cand in (loc, vis) else None
+                    if r["spread"] == 0:
+                        r["fav"] = None
             # detalle: moneyline y lesiones
             try:
                 s = pedir(ESPN + "summary?event=" + ev["id"])
                 pc = (s.get("pickcenter") or [None])[0] or {}
                 ml_a = (pc.get("awayTeamOdds") or {}).get("moneyLine")
                 ml_h = (pc.get("homeTeamOdds") or {}).get("moneyLine")
-                r["ml"] = {vis: ml_a, loc: ml_h}
+                num = lambda v: v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+                r["ml"] = {vis: num(ml_a), loc: num(ml_h)}
                 for bloque in s.get("injuries") or []:
                     t = tri(((bloque.get("team") or {}).get("abbreviation")) or "")
                     r["lesiones"][t] = [
                         {"jugador": (i.get("athlete") or {}).get("displayName"),
                          "estado": i.get("status"),
-                         "nota": ((i.get("details") or {}).get("type") or i.get("type", {}).get("description") if isinstance(i.get("details"), dict) else None)}
+                         "nota": ((i.get("details") if isinstance(i.get("details"), dict) else {}).get("type")
+                                  or (i.get("type") if isinstance(i.get("type"), dict) else {}).get("description"))}
                         for i in bloque.get("injuries", [])
                     ]
                 for bloque in s.get("lastFiveGames") or []:
@@ -203,10 +223,10 @@ def contexto_partidos(fecha, partidos_ludo, avisos):
 def evaluar(f, ctx):
     """Devuelve un dict liviano con el lado recomendado, probabilidad y semáforo."""
     merc = f["mercado"]
-    if merc not in CV or not f.get("ult"):
+    ult = [x for x in (f.get("ult") or []) if isinstance(x, (int, float))]
+    if merc not in CV or not ult or not f.get("linea") or f["linea"] <= 0:
         return None
     L = f["linea"]
-    ult = f["ult"]
     n_t = f.get("n_temp") or 0
     prom_t = f.get("prom_temp") if f.get("prom_temp") is not None else f.get("prom")
     m10 = st.mean(ult)
@@ -270,10 +290,10 @@ def evaluar(f, ctx):
     bajos = sum(1 for m in mins if m < .7 * med)
     estado = f.get("estado")
     banderas, rojo, graves = [], False, 0
-    if estado in ('Questionable', 'Doubtful'):
+    if estado in ESTADOS_ROJO:
         rojo = True; banderas.append(f"lesión: {estado}")
-    elif estado == 'Probable':
-        banderas.append("lesión: Probable")
+    elif estado:
+        banderas.append(f"lesión: {estado}")
     if f.get("no_sugerir"):
         rojo = True; banderas.append('el sitio lo marca "no sugerir"')
     if f.get("rol") == 'poco minuto' or min_proy < 20:
@@ -341,9 +361,9 @@ def evaluar(f, ctx):
         "mu": mu, "sd": sd, "prom_t": prom_t if prom_t is not None else m10, "m10": m10, "ult": ult,
         "min_proy": min_proy, "mins": mins, "bajos": bajos, "n_t": n_t, "est": estado, "completo": completo,
         "tiene_mercado": casa is not None,
-        "d_modelo": logit(p_modelo) - logit(p0_main),
-        "d_mkt": (logit(p_mkt_over) - logit(p0_main)) if p_mkt_over is not None else None,
-        "overround": (1 / casa["mas"] + 1 / casa["menos"]) if casa else None,
+        "d_modelo": max(-1.0, min(1.0, logit(p_modelo) - logit(p0_main))),
+        "d_mkt": max(-1.0, min(1.0, logit(p_mkt_over) - logit(p0_main))) if p_mkt_over is not None else None,
+        "overround": (1 / casa["mas"] + 1 / casa["menos"]) if (casa and casa.get("mas") and casa.get("menos")) else None,
         "p_over_main": p_over, "L": L, "pct_temp": f.get("pct_temp"), "pct_h2h": f.get("pct_h2h"), "n_h2h": f.get("n_h2h") or 0,
         "no_sugerir": bool(f.get("no_sugerir")), "rol": f.get("rol"), "cruce": f.get("cruce"),
         "blow": r, "texto_spread": texto_spread, "b2b": bool(desc.get("b2b")),
@@ -370,10 +390,10 @@ def evaluar(f, ctx):
 def banderas_comunes(k):
     """Banderas que no dependen de la línea: lesión, minutos, muestra. Devuelve (rojo, avisos, graves)."""
     rojo, fl, graves = [], [], 0
-    if k["est"] in ("Questionable", "Doubtful"):
+    if k["est"] in ESTADOS_ROJO:
         rojo.append(f"lesión: {k['est']}")
-    elif k["est"] == "Probable":
-        fl.append("lesión: Probable")
+    elif k["est"]:
+        fl.append(f"lesión: {k['est']}")
     if k["no_sugerir"]:
         rojo.append('el sitio lo marca "no sugerir"')
     if k["rol"] == "poco minuto" or k["min_proy"] < 20:
@@ -464,7 +484,7 @@ def construir_grupo(f, e, ladder):
     Devuelve None si Betano no ofrece ese mercado para el jugador."""
     k = e.pop("_k")
     casa = f.get("casa")
-    if not casa:
+    if not casa or not casa.get("mas"):
         return None
     rojo, fl_com, graves = banderas_comunes(k)
     extra = []
@@ -478,6 +498,8 @@ def construir_grupo(f, e, ladder):
         if L <= 0:
             continue
         pasos.append(paso(k, L, betano[L], temp, L == f["linea"], (rojo, fl_com, graves)))
+    if not pasos:
+        return None
     rec = None
     for color in ("verde", "amarillo"):
         cand = [s for s in pasos if s["c"] == color]
@@ -490,21 +512,26 @@ def construir_grupo(f, e, ladder):
                                 "ult", "min", "min_ult", "rol", "est", "cruce", "dvp", "aj", "mod") if k2 in e}
     g.update({"L": f["linea"], "temp": temp, "fl": rojo + fl_com + extra, "rec": rec, "pasos": pasos,
               "cu_mas": casa["mas"], "cu_menos": casa["menos"]})
-    p_menos = 1 - k["p_over_main"]
+    p_menos = min(P_MAX, 1 - k["p_over_main"])
+    if not casa.get("menos"):
+        return g
     g["menos"] = {"L": f["linea"], "cu": casa["menos"], "p": r3(p_menos),
                   "c": e["c"] if e["lado"] == "menos" else "rojo", "ju": round(1 / max(p_menos, .01), 2)}
     return g
 
 
-def bajar_escaleras(filas, mercados, avisos, hilos=2, pausa=0.2):
+def bajar_escaleras(filas, mercados, avisos, hilos=2, pausa=0.2, presupuesto_s=600):
     """Escalera de cuotas de Betano y partidos de la temporada, por jugador y mercado. ~1 s por consulta."""
     objetivo = sorted({(f["id"], f["mercado"]) for f in filas
                        if f["mercado"] in mercados and f.get("casa") and f.get("periodo") is None and f.get("ult")})
     res = {}
+    limite = time.monotonic() + presupuesto_s   # si LudoProps está lento, se publica igual con la línea principal
 
     def uno(par):
+        if time.monotonic() > limite:
+            raise TimeoutError("sin tiempo: se usa solo la línea principal")
         time.sleep(pausa)
-        d = pedir(f"{LUDO}ficha?id={par[0]}&prop={par[1]}&rango=temp", intentos=2, espera=1.5)
+        d = pedir(f"{LUDO}ficha?id={par[0]}&prop={par[1]}&rango=temp", intentos=2, espera=1.5, timeout=20)
         betano = {float(x["linea"]): float(x["cuota"]) for x in d.get("betano_esc") or []}
         temp = [g["valor"] for g in d.get("grafico") or [] if g.get("valor") is not None]
         return {"betano": betano, "temp": temp}
@@ -534,7 +561,12 @@ def main():
 
     ver = pedir(LUDO + "version")
     tab = pedir(LUDO + "tablero?fecha=" + urllib.parse.quote(fecha))
+    if not isinstance(tab, dict) or "partidos" not in tab:
+        sys.exit(f"Tablero inválido de LudoProps para {fecha}: no se sobrescriben los datos.")
     if not tab.get("partidos"):
+        ev = pedir(ESPN + "scoreboard?dates=" + fecha.replace("-", "")).get("events", [])
+        if ev:
+            sys.exit(f"LudoProps no tiene partidos el {fecha} pero ESPN tiene {len(ev)}: no se sobrescriben los datos.")
         print(f"No hay partidos NBA el {fecha}.")
     ctx = contexto_partidos(fecha, tab.get("partidos", []), avisos)
 
@@ -543,14 +575,18 @@ def main():
 
     grupos = []
     for f in tab.get("filas", []):
-        e = evaluar(f, ctx)
-        if e:
-            g = construir_grupo(f, e, escaleras.get((f["id"], f["mercado"])))
-            if g:
-                grupos.append(g)
+        try:
+            e = evaluar(f, ctx)
+            if e:
+                esc = escaleras.get((f["id"], f["mercado"])) if f.get("periodo") is None else None
+                g = construir_grupo(f, e, esc)
+                if g:
+                    grupos.append(g)
+        except Exception as ex:  # noqa: BLE001  una fila rara no debe tirar la corrida entera
+            avisos.append(f"fila {f.get('nombre')} {f.get('mercado')}: {ex}")
     orden = {'verde': 0, 'amarillo': 1, 'rojo': 2}
     def color_rec(g):
-        return next(x["c"] for x in g["pasos"] if x["L"] == g["rec"])
+        return next((x["c"] for x in g["pasos"] if x["L"] == g["rec"]), "rojo")
     grupos.sort(key=lambda g: orden[color_rec(g)])
 
     partidos = []
@@ -579,12 +615,30 @@ def main():
     with open(os.path.join(a.salida, "hoy.json"), "w", encoding="utf-8") as fh:
         fh.write(txt)
     # Foto liviana del día (solo la línea principal de cada jugador) para medir la calibración más adelante.
-    foto = {"fecha": fecha, "generado_en": salida["generado_en"], "lineas": [
-        {"id": g["id"], "m": g["m"], "per": g["per"], "L": g["L"], "mu": g["mu"], "sd": g["sd"],
-         "cu_mas": g["cu_mas"], "cu_menos": g["cu_menos"],
-         "p": next(x["p"] for x in g["pasos"] if x["L"] == g["L"]),
-         "c": next(x["c"] for x in g["pasos"] if x["L"] == g["L"])} for g in grupos]}
-    with open(os.path.join(a.salida, "historial", fecha + ".json"), "w", encoding="utf-8") as fh:
+    # Solo partidos que no empezaron: después del inicio las líneas ya no son pre-partido.
+    # Se combina con la foto anterior del mismo día para no perder la de los partidos que ya arrancaron.
+    no_empezados = {p["gid"] for p in partidos if p["estado"] == 1}
+    nuevas = []
+    for g in grupos:
+        if g["gid"] not in no_empezados:
+            continue
+        principal = next((x for x in g["pasos"] if x["L"] == g["L"]), None)
+        if principal:
+            nuevas.append({"id": g["id"], "gid": g["gid"], "m": g["m"], "per": g["per"], "L": g["L"], "mu": g["mu"],
+                           "sd": g["sd"], "cu_mas": g["cu_mas"], "cu_menos": g["cu_menos"],
+                           "p": principal["p"], "c": principal["c"]})
+    ruta_foto = os.path.join(a.salida, "historial", fecha + ".json")
+    previas = []
+    if os.path.exists(ruta_foto):
+        try:
+            with open(ruta_foto, encoding="utf-8") as fh:
+                previas = json.load(fh).get("lineas", [])
+        except (OSError, ValueError):
+            previas = []
+    claves = {(x["id"], x["m"], x["per"]) for x in nuevas}
+    foto = {"fecha": fecha, "generado_en": salida["generado_en"],
+            "lineas": nuevas + [x for x in previas if (x["id"], x["m"], x["per"]) not in claves]}
+    with open(ruta_foto, "w", encoding="utf-8") as fh:
         json.dump(foto, fh, ensure_ascii=False, separators=(",", ":"))
     cuenta = {c: sum(1 for x in grupos if color_rec(x) == c) for c in orden}
     n_pasos = sum(len(g["pasos"]) for g in grupos)
