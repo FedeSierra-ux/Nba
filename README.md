@@ -2,12 +2,12 @@
 
 Página que toma las líneas de jugadores NBA del día, las cruza con spread, riesgo de blowout, back-to-back y lesiones, y les pone un **semáforo de riesgo**. Permite armar combinadas pata por pata viendo la cuota y la probabilidad en vivo.
 
-**Versión 0.3.0**
+**Versión 0.4.0**
 
 ## Qué trae
 
 - **Partidos del día**: spread, total, moneyline, probabilidad de blowout, back-to-back / 3 en 4 y lesiones.
-- **Líneas «más de» con toda su escalera** (≈3.400 jugador-mercado, ≈25.000 líneas): puntos, rebotes, asistencias, combos, triples, tiros, libres, robos, tapas, pérdidas, faltas y primer cuarto. Para cada jugador se muestra la **línea más alta que cumple la probabilidad mínima** que elijas (55 % a 90 %, o la recomendada por el semáforo) y un desplegable con **todas las líneas** (+3,5, +4,5, +5,5…) con cuota de Betano, cuota de bet365, probabilidad, **cuota justa** y semáforo.
+- **Solo líneas con cuota de Betano**, en una tabla tipo LudoProps: jugador, cuota de Betano, gráfico de los últimos 10 con la línea punteada, probabilidad y tasas de acierto (últimos 10 y temporada). Hoy son ≈850 jugador-mercado y ≈2.500 líneas. Para cada jugador se muestra la **línea más alta que cumple la probabilidad mínima** que elijas (55 % a 90 %, o la recomendada por el semáforo) y un desplegable con **todas las líneas de Betano** (+4,5, +5,5…) con cuota, probabilidad, **cuota justa** y semáforo.
 - **Solo «más de» por defecto.** Los «menos» se pueden ver, solo para la línea principal, desde el desplegable.
 - **Semáforo** 🟢🟡🔴 por línea, con filtros por partido, tipo de mercado (puntos, rebotes, asistencias, combos, otros), probabilidad mínima, cuota y búsqueda.
 - **Armador de combinadas**: sumá patas desde cualquier línea de la escalera (elegir otra línea del mismo jugador y mercado reemplaza la anterior), editá la cuota de cada una (por ejemplo, con la de Stake), mirá cuota total, probabilidad con correlación, cuota justa de la combinada, ventaja estimada y el semáforo. Guarda combinadas en el navegador.
@@ -17,10 +17,16 @@ Página que toma las líneas de jugadores NBA del día, las cruza con spread, ri
 
 | Dato | Fuente | Clave |
 |---|---|---|
-| Líneas, promedios, minutos, lesiones, cuotas Betano y bet365 | [LudoProps](https://ludoprops.com) | no |
+| Líneas, promedios, minutos, lesiones y cuotas de Betano | [LudoProps](https://ludoprops.com) | no |
 | Spread, total, moneyline, calendario (back-to-back), lesiones por partido | ESPN (`site.api.espn.com`, DraftKings) | no |
 
-La escalera real de cuotas (Betano y bet365) se baja para **puntos, rebotes y asistencias** (≈ 1 consulta por jugador y mercado, unas 330 por corrida, cerca de 3 minutos). En los demás mercados las líneas faltantes se calculan con el modelo y se muestran sin cuota, con su cuota justa. Para bajar más mercados: `--mercados pts,reb,ast,pra,pr,pa,ra` (o `todos`, ≈1.600 consultas).
+La escalera de cuotas de Betano se baja para **puntos, rebotes y asistencias** (≈ 1 consulta por jugador y mercado, unas 330 por corrida, cerca de 3 minutos). En los demás mercados se muestra solo la línea principal. Para bajar más mercados: `--mercados pts,reb,ast,pra,pr,pa,ra` (o `todos`).
+
+### Por qué hay jugadores o líneas sin cuota de Betano
+
+- **Mercados que Betano no ofrece:** tiros intentados o convertidos, pérdidas, faltas, rebotes ofensivos y defensivos, dobles y primer cuarto. No se muestran.
+- **Jugadores con pocos minutos:** Betano publica props sobre todo para titulares y rotación fija (≈ 28 min de promedio). Los que no tienen cuota juegan ≈ 21 min. En puntos hay 118 de 153 jugadores con cuota.
+- **Líneas muy bajas:** Betano publica unas 6 líneas por jugador alrededor de la principal. Una línea muy segura (por ejemplo +2,5 rebotes cuando el promedio es 6) suele no estar porque pagaría menos de ~1,15.
 
 **Stake** no tiene API pública (el sitio bloquea consultas automáticas) y los proveedores que la ofrecen son de pago. Por eso la cuota de Stake se escribe a mano en cada pata de la combinada.
 
@@ -48,8 +54,8 @@ node --test tests/correlacion.test.js tests/sugeridas.test.js
 2. **Ajustes de contexto** sobre los minutos proyectados:
    - *Blowout*: spread → probabilidad de que el margen final supere 14,5 puntos (margen ~ Normal(spread, 12)). Se resta la parte por encima de la probabilidad típica (27 %), porque los promedios de temporada ya incluyen paliza.
    - *Back-to-back*: −2 min a titulares en la segunda noche; −1 min en el tercer partido en 4 días.
-3. **Contraste con la casa**: si hay cuota, la probabilidad final es el promedio entre el modelo y la probabilidad de la casa sin margen (se quita el margen con el sobreprecio de la línea principal). Elegir siempre el lado donde el modelo más discrepa sobreestima la probabilidad; la mezcla lo corrige. Las líneas sin cuota usan la misma corrección que la línea principal del jugador, y si el jugador no tiene cuota en Betano la línea no puede ser verde.
-4. **Escalera**: la probabilidad de «más de X» para cualquier X sale de la misma distribución desplazada con la corrección de la línea principal. Las tasas de acierto se calculan sobre los últimos 10 partidos y, en puntos/rebotes/asistencias, sobre todos los partidos de la temporada.
+3. **Contraste con la casa**: la probabilidad final es el promedio entre el modelo y la probabilidad de Betano sin margen (se quita el margen con el sobreprecio de la línea principal). Elegir siempre el lado donde el modelo más discrepa sobreestima la probabilidad; la mezcla lo corrige.
+4. **Escalera**: el modelo de cada línea de Betano usa la misma distribución que la línea principal, desplazada con su corrección. Las tasas de acierto se calculan sobre los últimos 10 partidos y, en puntos/rebotes/asistencias, sobre todos los partidos de la temporada.
 5. **Colores** (para cada línea de la escalera):
    - 🟢 probabilidad ≥ 60 %, promedios de temporada / últimos 10 / proyección por encima de la línea (≥ 4 %), tasas de acierto a favor y ninguna en contra, ≥ 26 minutos proyectados, minutos estables, sin lesión, sin riesgo alto de blowout ni back-to-back (salvo que la línea tenga ≥ 75 % de probabilidad), y el modelo no supera a la casa por más de 20 puntos.
    - Ninguna línea supera 96 %: siempre queda un riesgo que las estadísticas no ven (lesión durante el partido, faltas, minutos de basura).

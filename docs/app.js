@@ -3,6 +3,10 @@
 (function () {
   'use strict';
   var $ = function (s, r) { return (r || document).querySelector(s); };
+  // Si falta un elemento (por ejemplo, HTML de otra versión en caché) no se rompe la página.
+  var NULO = { set innerHTML(v) {}, set textContent(v) {}, set hidden(v) {}, addEventListener: function () {}, setAttribute: function () {},
+    querySelector: function () { return null; }, scrollIntoView: function () {}, classList: { toggle: function () {}, contains: function () { return false; } } };
+  var $$ = function (s) { return $(s) || NULO; };
   var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
   var nfLinea = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 1 });
   var nfCuota = new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -20,7 +24,7 @@
 
   var S = {
     data: null, grupos: [], porClave: new Map(), partido: '', grupo: 'todos', colores: new Set(['verde', 'amarillo']),
-    minP: 0.70, q: '', mercado: '', orden: 'cuota', soloCuota: false, soloCompleto: false, menos: false,
+    minP: 0.70, q: '', mercado: '', orden: 'cuota', soloCompleto: false, menos: false,
     mostrar: PAGINA, ticket: [], guardadas: [], stake: 1000, lista: [], abiertos: new Set()
   };
 
@@ -41,8 +45,7 @@
     var h = Math.floor(m / 60); return h < 24 ? 'hace ' + h + ' h' : 'hace ' + Math.floor(h / 24) + ' d';
   }
   var fmtML = function (x) { return x == null ? '—' : (x > 0 ? '+' : '') + x; };
-  var cuotaDe = function (s) { return s.cu != null ? s.cu : (s.cb != null ? s.cb : null); };
-  var fuenteDe = function (s) { return s.cu != null ? 'Betano' : (s.cb != null ? 'bet365' : null); };
+  var cuotaDe = function (s) { return s.cu != null ? s.cu : null; };
 
   // ----------------------------------------------------------------- carga
   function cargar() {
@@ -50,8 +53,8 @@
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
     }).then(iniciar).catch(function (e) {
-      $('#info-actualizado').textContent = 'Sin datos';
-      var a = $('#aviso'); a.hidden = false;
+      $$('#info-actualizado').textContent = 'Sin datos';
+      var a = $$('#aviso'); a.hidden = false;
       a.textContent = 'No pude cargar data/hoy.json (' + e.message + '). Si abriste el archivo con doble clic, servilo con: python3 -m http.server -d docs';
     });
   }
@@ -69,19 +72,19 @@
 
   function cabecera() {
     var d = S.data, f = d.fecha.split('-').reverse().join('/');
-    $('#info-actualizado').textContent = 'Datos del ' + f + ' · actualizado ' + hace(d.generado_en) +
+    $$('#info-actualizado').textContent = 'Datos del ' + f + ' · actualizado ' + hace(d.generado_en) +
       (d.reporte_lesiones ? ' · reporte de lesiones ' + d.reporte_lesiones.slice(11) + ' ET' : '');
     var avisos = (d.avisos || []).slice();
     var hoyET = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
     if (d.fecha !== hoyET) avisos.unshift('Estos datos son del ' + f + ', no de hoy. Corré el script o esperá la próxima actualización.');
     else if ((Date.now() - new Date(d.generado_en).getTime()) > 6 * 3600e3) avisos.unshift('Los datos tienen más de 6 horas: las lesiones pudieron cambiar. Verificá el reporte antes de apostar.');
-    var a = $('#aviso');
+    var a = $$('#aviso');
     if (avisos.length) { a.hidden = false; a.textContent = avisos.join(' · '); }
   }
 
   // ----------------------------------------------------------------- partidos
   function partidos() {
-    var d = S.data, cont = $('#partidos');
+    var d = S.data, cont = $$('#partidos');
     cont.innerHTML = d.partidos.map(function (p) {
       var desc = p.descanso || {}, tags = [];
       if (p.spread != null) tags.push('<span class="tag">' + esc(p.fav) + ' −' + fL(p.spread) + '</span>');
@@ -119,9 +122,7 @@
   }
 
   // ----------------------------------------------------------------- selección de la línea que se muestra
-  function pasosValidos(g) {
-    return S.soloCuota ? g.pasos.filter(function (s) { return cuotaDe(s) != null; }) : g.pasos;
-  }
+  function pasosValidos(g) { return g.pasos; }
   /* Devuelve la línea «más de» a mostrar para el grupo, o null si no hay ninguna que cumpla. */
   function elegirPaso(g) {
     var base = pasosValidos(g).filter(function (s) { return S.colores.has(s.c); });
@@ -152,7 +153,7 @@
     var m = new Map();
     S.grupos.forEach(function (g) { m.set(g.m, g.mn); });
     var arr = Array.from(m.entries()).sort(function (a, b) { return a[1].localeCompare(b[1], 'es'); });
-    $('#f-mercado').innerHTML = '<option value="">Cualquier mercado</option>' + arr.map(function (x) { return '<option value="' + esc(x[0]) + '">' + esc(x[1]) + '</option>'; }).join('');
+    $$('#f-mercado').innerHTML = '<option value="">Cualquier mercado</option>' + arr.map(function (x) { return '<option value="' + esc(x[0]) + '">' + esc(x[1]) + '</option>'; }).join('');
   }
 
   function aplicarFiltros() {
@@ -167,7 +168,7 @@
       var s = elegirPaso(g);
       if (s) lista.push({ g: g, s: s });
     });
-    ['verde', 'amarillo', 'rojo'].forEach(function (c) { $('#n-' + c).textContent = cuentas[c]; });
+    ['verde', 'amarillo', 'rojo'].forEach(function (c) { $$('#n-' + c).textContent = cuentas[c]; });
     var key = {
       cuota: function (x) { return cuotaDe(x.s) != null ? cuotaDe(x.s) : x.s.ju; },
       p: function (x) { return x.s.p; },
@@ -181,12 +182,17 @@
   }
 
   // ----------------------------------------------------------------- tarjetas
+  /* Gráfico de los últimos 10 (más reciente a la derecha) con la línea punteada, como en LudoProps. */
   function barras(g, s) {
-    var ult = g.ult || [], mx = Math.max.apply(null, ult.concat([s.L * 1.5, 1]));
-    return '<span class="barras" role="img" aria-label="Últimos ' + ult.length + ' partidos, el más reciente a la derecha: ' + esc(ult.join(', ')) + '">' +
-      ult.map(function (v) {
-        return '<i class="' + (v > s.L ? 'ok' : 'no') + '" style="height:' + Math.max(2, Math.round(v / mx * 16)) + 'px" title="' + v + '"></i>';
-      }).join('') + '</span>';
+    var ult = g.ult || [], W = 120, H = 40, n = ult.length || 1, paso = W / n, ancho = paso - 2;
+    var mx = Math.max.apply(null, ult.concat([s.L * 1.6, 1]));
+    var yL = H - s.L / mx * H;
+    var rects = ult.map(function (v, i) {
+      var h = Math.max(2, v / mx * H);
+      return '<rect x="' + (i * paso + 1).toFixed(1) + '" y="' + (H - h).toFixed(1) + '" width="' + ancho.toFixed(1) + '" height="' + h.toFixed(1) + '" rx="1.5" class="' + (v > s.L ? 'ok' : 'no') + '"><title>' + v + '</title></rect>';
+    }).join('');
+    return '<svg class="mini" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMinYMid meet" role="img" aria-label="Últimos ' + ult.length + ' partidos (el más reciente a la derecha): ' + esc(ult.join(', ')) + '. Línea ' + fL(s.L) + '">' +
+      rects + '<line x1="0" x2="' + W + '" y1="' + yL.toFixed(1) + '" y2="' + yL.toFixed(1) + '" class="raya"/></svg>';
   }
   function etiquetas(g, s) {
     var x = [];
@@ -197,67 +203,60 @@
     });
     return x.join('');
   }
-  var legDe = function (g, s) { var k = gkey(g); return S.ticket.find(function (l) { return l.gkey === k; }); };
-
-  function botonPaso(g, s, lado) {
-    var t = legDe(g, s), activo = !!t && t.L === (lado === 'mas' ? s.L : g.L) && t.lado === lado;
-    var cu = lado === 'mas' ? cuotaDe(s) : (g.menos && g.menos.cu);
-    return '<button type="button" class="add' + (activo ? ' en-ticket' : '') + '" data-add="' + lado + '" data-l="' + (lado === 'mas' ? s.L : g.L) + '" aria-pressed="' + (activo ? 'true' : 'false') + '">' +
-      (activo ? '✓ ' : '+ ') + LADO[lado] + ' ' + fL(lado === 'mas' ? s.L : g.L) + ' <small>' + (cu ? '@' + fC(cu) : 'sin cuota') + '</small></button>';
-  }
+  var legDe = function (g) { var k = gkey(g); return S.ticket.find(function (l) { return l.gkey === k; }); };
+  var claseP = function (p) { return p == null ? '' : p >= 0.6 ? 'p-alta' : p >= 0.5 ? 'p-media' : 'p-baja'; };
+  var LECTURA = { pts: 'puntos', reb: 'rebotes', ast: 'asistencias', pra: 'pts + reb + asist', pr: 'pts + rebotes', pa: 'pts + asistencias',
+    ra: 'reb + asistencias', fg3m: 'triples', stl: 'robos', blk: 'tapas' };
+  var lectura = function (g) { return LECTURA[g.m] || String(g.mn).toLowerCase(); };
 
   function escalera(g, sel) {
-    var pasos = g.pasos.slice().sort(function (a, b) { return a.L - b.L; });
+    var pasos = g.pasos.slice().sort(function (a, b) { return a.L - b.L; }), t = legDe(g);
     var filas = pasos.map(function (s) {
-      var t = legDe(g, s), activo = !!t && t.L === s.L && t.lado === 'mas';
+      var activo = !!t && t.L === s.L && t.lado === 'mas';
       return '<tr class="paso c-' + s.c + (s.L === sel.L ? ' sel' : '') + '" title="' + esc((s.fl || []).join(' · ')) + '">' +
-        '<td><b>+' + fL(s.L) + '</b>' + (s.L === g.L ? ' <small>principal</small>' : '') + '</td>' +
-        '<td>' + (s.cu != null ? fC(s.cu) : '—') + '</td><td>' + (s.cb != null ? fC(s.cb) : '—') + '</td>' +
-        '<td><b>' + fP(s.p) + '</b></td><td title="1 / probabilidad: si tu casa paga más que esto, hay valor según el modelo">' + fC(s.ju) + '</td>' +
+        '<td><b>Más de ' + fL(s.L) + '</b>' + (s.L === g.L ? ' <small>principal</small>' : '') + '</td>' +
+        '<td><span class="badge-cuota">' + fC(s.cu) + '</span></td>' +
+        '<td class="' + claseP(s.p) + '"><b>' + fP(s.p) + '</b></td><td>' + fP(s.r10) + '</td><td>' + (s.rt != null ? fP(s.rt) : '—') + '</td>' +
+        '<td title="1 / probabilidad: si tu casa paga más que esto, hay valor según el modelo">' + fC(s.ju) + '</td>' +
         '<td><span class="punto-mini" aria-label="' + s.c + '"></span></td>' +
         '<td><button type="button" class="add chico' + (activo ? ' en-ticket' : '') + '" data-add="mas" data-l="' + s.L + '" aria-pressed="' + (activo ? 'true' : 'false') + '" aria-label="Agregar más de ' + fL(s.L) + '">' + (activo ? '✓' : '+') + '</button></td></tr>';
     }).join('');
     var menos = '';
     if (S.menos && g.menos) {
-      var tm = legDe(g, null), am = !!tm && tm.lado === 'menos';
-      menos = '<tr class="paso c-' + g.menos.c + ' menos"><td><b>−' + fL(g.menos.L) + '</b> <small>menos</small></td><td>' + fC(g.menos.cu) + '</td><td>—</td><td><b>' + fP(g.menos.p) + '</b></td><td>' + fC(g.menos.ju) + '</td>' +
+      var am = !!t && t.lado === 'menos';
+      menos = '<tr class="paso c-' + g.menos.c + ' menos"><td><b>Menos de ' + fL(g.menos.L) + '</b></td><td><span class="badge-cuota">' + fC(g.menos.cu) + '</span></td><td class="' + claseP(g.menos.p) + '"><b>' + fP(g.menos.p) + '</b></td><td>—</td><td>—</td><td>' + fC(g.menos.ju) + '</td>' +
         '<td><span class="punto-mini" aria-label="' + g.menos.c + '"></span></td><td><button type="button" class="add chico' + (am ? ' en-ticket' : '') + '" data-add="menos" data-l="' + g.L + '" aria-label="Agregar menos de ' + fL(g.L) + '">' + (am ? '✓' : '+') + '</button></td></tr>';
     }
     var temp = g.temp && g.temp.length ? '<p class="nota">Partidos de la temporada (del más antiguo al más reciente): ' + esc(g.temp.join(', ')) + '</p>' : '';
-    return '<div class="escalera"><table><thead><tr><th>Línea</th><th>Betano</th><th>bet365</th><th>Prob.</th><th>Justa</th><th></th><th></th></tr></thead><tbody>' + filas + menos + '</tbody></table>' +
-      '<p class="nota"><b>Justa</b> = cuota que haría el modelo (1 / probabilidad). Si tu casa (por ejemplo Stake) paga más que eso, hay valor según el modelo. Pasá el cursor sobre una fila para ver sus alertas.</p>' + temp + '</div>';
+    return '<div class="escalera"><table><thead><tr><th>Línea</th><th>Betano</th><th>Prob.</th><th>Últ. 10</th><th>Temp.</th><th>Justa</th><th></th><th></th></tr></thead><tbody>' + filas + menos + '</tbody></table>' +
+      '<p class="nota"><b>Justa</b> = cuota que haría el modelo (1 / probabilidad). Si tu casa (por ejemplo Stake) paga más que eso, hay valor según el modelo.</p>' + temp + '</div>';
   }
 
   function tarjeta(it) {
-    var g = it.g, s = it.s, k = gkey(g), abierto = S.abiertos.has(k);
-    var tags = etiquetas(g, s), cu = cuotaDe(s);
-    var fuentes = [];
-    if (s.pm != null) fuentes.push('Modelo ' + fP(s.pm));
-    if (s.pk != null) fuentes.push('Casa ' + fP(s.pk));
-    var precio = cu != null ? '@' + fC(cu) + ' <small>' + fuenteDe(s) + '</small> · justa ' + fC(s.ju) : 'sin cuota · <b>justa ' + fC(s.ju) + '</b>';
+    var g = it.g, s = it.s, k = gkey(g), abierto = S.abiertos.has(k), t = legDe(g);
+    var activo = !!t && t.L === s.L && t.lado === 'mas', tags = etiquetas(g, s), varias = g.pasos.length > 1;
     return '<article class="linea c-' + s.c + '" data-k="' + esc(k) + '">' +
-      '<span class="punto" role="img" aria-label="Semáforo ' + s.c + '"></span>' +
-      '<div class="l-jug"><b>' + esc(g.j) + '</b><span>' + esc(g.eq) + (g.loc ? ' vs ' : ' @ ') + esc(g.riv) + ' · ' + esc(g.pos || '') + (g.rol ? ' · ' + esc(g.rol) : '') + '</span></div>' +
-      '<div class="l-apuesta"><span class="rec mas">MÁS ' + fL(s.L) + '</span><span>' + esc(g.mn) + (g.per ? ' (' + esc(g.per) + ')' : '') + '</span>' +
-      '<span class="prob">' + fP(s.p) + ' <small>prob.</small></span><span class="precio">' + precio + '</span></div>' +
-      '<div class="l-stats"><span>Temporada <b>' + fL(g.pt) + '</b></span><span>Últ. 10 <b>' + fL(g.p10) + '</b></span><span>Proyección <b>' + fL(g.mu) + '</b></span>' +
-      '<span>Min <b>' + Math.round(g.min) + '</b></span>' + barras(g, s) +
-      '<span>Superó +' + fL(s.L) + ': últ. 10 <b>' + fP(s.r10) + '</b>' + (s.rt != null ? ' · temporada <b>' + fP(s.rt) + '</b>' : '') + '</span>' +
-      (fuentes.length ? '<span>' + fuentes.join(' · ') + '</span>' : '') +
-      (g.aj ? '<span title="' + esc(g.aj) + '">ⓘ ajuste</span>' : '') + '</div>' +
-      (tags ? '<div class="l-flags">' + tags + '</div>' : '') +
-      '<div class="l-botones">' + botonPaso(g, s, 'mas') +
-      '<button type="button" class="desplegar" data-desplegar aria-expanded="' + (abierto ? 'true' : 'false') + '">' + (abierto ? 'Ocultar' : 'Ver todas las líneas (' + g.pasos.length + ')') + ' ' + (abierto ? '▴' : '▾') + '</button></div>' +
+      '<div class="col-jug"><div><b class="nombre">' + esc(g.j) + '</b> <span class="mut">' + esc(g.eq) + (g.pos ? ', ' + esc(g.pos) : '') + '</span></div>' +
+        '<div class="apuesta">Más de ' + fL(s.L) + ' ' + esc(lectura(g)) + (g.per ? ' (' + esc(g.per) + ')' : '') + '</div>' +
+        '<div class="mut chico">' + (g.loc ? 'vs ' : '@ ') + esc(g.riv) + ' · ' + Math.round(g.min) + ' min' + (g.rol ? ', ' + esc(g.rol) : '') + '</div></div>' +
+      '<div class="col-cuota" data-col="Betano"><span class="badge-cuota grande">' + fC(s.cu) + '</span><span class="mut chico">justa ' + fC(s.ju) + '</span></div>' +
+      '<div class="col-barras">' + barras(g, s) + '<span class="mut chico">Temp ' + fL(g.pt) + ' · Últ. 10 ' + fL(g.p10) + ' · Proy ' + fL(g.mu) + '</span></div>' +
+      '<div class="col-nums"><div class="col-num ' + claseP(s.p) + '" data-col="Prob."><b>' + fP(s.p) + '</b></div>' +
+      '<div class="col-num ' + claseP(s.r10) + '" data-col="Últ. 10"><b>' + fP(s.r10) + '</b></div>' +
+      '<div class="col-num ' + claseP(s.rt) + '" data-col="Temp."><b>' + (s.rt != null ? fP(s.rt) : '—') + '</b></div></div>' +
+      '<div class="col-acc"><button type="button" class="add' + (activo ? ' en-ticket' : '') + '" data-add="mas" data-l="' + s.L + '" aria-pressed="' + (activo ? 'true' : 'false') + '">' + (activo ? '✓ En combinada' : '+ Agregar') + '</button>' +
+        (varias ? '<button type="button" class="desplegar" data-desplegar aria-expanded="' + (abierto ? 'true' : 'false') + '">' + (abierto ? 'Ocultar ▴' : g.pasos.length + ' líneas ▾') + '</button>' : '') + '</div>' +
+      (tags ? '<div class="col-flags">' + tags + '</div>' : '') +
       (abierto ? '<div class="l-escalera">' + escalera(g, s) + '</div>' : '') + '</article>';
   }
 
   function pintarLista() {
-    var cont = $('#lineas'), l = S.lista, vis = l.slice(0, S.mostrar);
+    var cont = $$('#lineas'), l = S.lista, vis = l.slice(0, S.mostrar);
     var umbral = S.minP === 'rec' ? 'línea recomendada por el semáforo' : 'probabilidad ≥ ' + Math.round(S.minP * 100) + '%';
-    $('#contador').textContent = l.length + (l.length === 1 ? ' jugador · ' : ' jugadores · ') + umbral + (S.mostrar < l.length ? ' · mostrando ' + S.mostrar : '');
+    $$('#contador').textContent = l.length + (l.length === 1 ? ' jugador · ' : ' jugadores · ') + umbral + (S.mostrar < l.length ? ' · mostrando ' + S.mostrar : '');
     cont.innerHTML = vis.length ? vis.map(tarjeta).join('') :
       '<div class="vacio">No hay líneas con estos filtros. Probá bajar la probabilidad mínima, activar el semáforo rojo o quitar filtros.</div>';
-    $('#ver-mas').hidden = S.mostrar >= l.length;
+    $$('#ver-mas').hidden = S.mostrar >= l.length;
   }
 
   // ----------------------------------------------------------------- ticket
@@ -270,7 +269,7 @@
     }
     var cu = cuotaDe(s);
     return { key: k + '|' + s.L + '|mas', gkey: k, id: g.id, j: g.j, eq: g.eq, riv: g.riv, loc: g.loc, gid: g.gid, m: g.m, mn: g.mn, L: s.L, lado: 'mas',
-      cuota: cu, cuotaOrig: cu, fuente: fuenteDe(s), p: s.p, c: s.c, ju: s.ju, est: g.est, fl: (g.fl || []).concat(s.fl || []) };
+      cuota: cu, cuotaOrig: cu, fuente: 'Betano', p: s.p, c: s.c, ju: s.ju, est: g.est, fl: (g.fl || []).concat(s.fl || []) };
   }
 
   function alternar(g, L, lado) {
@@ -323,11 +322,11 @@
   var etiquetaFuente = function (l) { return l.cuotaOrig != null ? (l.cuota !== l.cuotaOrig ? 'editada (' + l.fuente + ' ' + fC(l.cuotaOrig) + ')' : l.fuente) : 'sin cuota publicada · justa ' + fC(l.ju); };
 
   function pintarTicket() {
-    var legs = S.ticket, cont = $('#ticket-cuerpo');
-    $('#ticket-n').textContent = legs.length;
+    var legs = S.ticket, cont = $$('#ticket-cuerpo');
+    $$('#ticket-n').textContent = legs.length;
     if (!legs.length) {
       cont.innerHTML = '<p class="nota">Tocá “+ MÁS” en una línea, o abrí «Ver todas las líneas» y elegí la que te convenga. Vas a ver la cuota y la probabilidad de la combinada a medida que sumás patas.</p>';
-      $('#ticket-resumen').textContent = '—';
+      $$('#ticket-resumen').textContent = '—';
       return;
     }
     cont.innerHTML = '<div id="t-patas">' + legs.map(function (l, i) {
@@ -341,7 +340,7 @@
   }
 
   function pintarTotales() {
-    var c = calcular(), v = veredicto(c), cont = $('#t-totales'); if (!cont) return;
+    var c = calcular(), v = veredicto(c), cont = $$('#t-totales'); if (!cont) return;
     var gan = c.cuota ? S.stake * c.cuota : null, avs = avisosTicket(c);
     var corrTxt = c.corr ? ' <small>(independiente: ' + fP(c.indep) + ')</small>' : '';
     cont.innerHTML = '<div class="totales">' +
@@ -357,7 +356,7 @@
       '<p class="nota">Si tu casa paga más que la cuota justa, el modelo ve valor. Pero el modelo no está validado contra resultados: desconfiá de las ventajas muy altas.</p>' +
       '<div class="acciones"><button type="button" class="btn primario" id="t-guardar">Guardar</button>' +
       '<button type="button" class="btn" id="t-copiar">Copiar texto</button><button type="button" class="btn" id="t-limpiar">Vaciar</button></div>';
-    $('#ticket-resumen').textContent = (c.cuota ? '@' + fC(c.cuota) + ' · ' : '') + fP(c.conj);
+    $$('#ticket-resumen').textContent = (c.cuota ? '@' + fC(c.cuota) + ' · ' : '') + fP(c.conj);
   }
 
   function textoTicket() {
@@ -371,7 +370,7 @@
     else window.prompt('Copiá el texto:', txt);
   }
   function pintarGuardadas() {
-    var g = S.guardadas, cont = $('#guardadas');
+    var g = S.guardadas, cont = $$('#guardadas');
     if (!g.length) { cont.innerHTML = '<p class="nota">Todavía no guardaste combinadas.</p>'; return; }
     cont.innerHTML = g.map(function (x, i) {
       return '<div class="guardada"><span><b>' + esc(x.nombre) + '</b><br><small>' + x.legs.length + ' patas · ' + (x.cuota ? '@' + fC(x.cuota) + ' · ' : '') + fP(x.p) + '</small></span>' +
@@ -389,7 +388,7 @@
       c.p = cj.conj; c.indep = cj.indep;
       return c;
     });
-    var cont = $('#sug-dia');
+    var cont = $$('#sug-dia');
     if (!COMBOS.length) { cont.innerHTML = '<div class="vacio">Hoy no hay suficientes líneas verdes o amarillas con cuota para armar combinadas sugeridas.</div>'; return; }
     cont.innerHTML = COMBOS.map(function (c, i) {
       var uno = c.p > 0 ? Math.round(1 / c.p) : null;
@@ -397,7 +396,7 @@
         '<div class="comb-cab"><span class="comb-tipo"><span class="comb-punto"></span>' + esc(c.nombre) + '</span><span class="comb-meta">' + c.n + ' patas · cuota ≥ ' + fC(c.T) + '</span></div>' +
         '<div class="comb-nums"><div><b>@' + fC(c.cuota) + '</b><span>cuota total</span></div><div><b>' + fP(c.p) + '</b><span>probabilidad' + (uno ? ' (1 de ' + uno + ')' : '') + '</span></div><div><b>' + fC(1 / c.p) + '</b><span>cuota justa</span></div></div>' +
         '<ul class="comb-patas">' + c.legs.map(function (l) {
-          return '<li><b>' + esc(l.g.j) + '</b> MÁS ' + fL(l.s.L) + ' ' + esc(l.g.mn) + '<small>' + esc(l.g.eq) + (l.g.loc ? ' vs ' : ' @ ') + esc(l.g.riv) + ' · ' + fP(l.s.p) + ' · @' + fC(l.cu) + ' ' + esc(fuenteDe(l.s)) + ' · <span class="dot ' + l.s.c + '"></span>' + l.s.c + '</small></li>';
+          return '<li><b>' + esc(l.g.j) + '</b> MÁS ' + fL(l.s.L) + ' ' + esc(l.g.mn) + '<small>' + esc(l.g.eq) + (l.g.loc ? ' vs ' : ' @ ') + esc(l.g.riv) + ' · ' + fP(l.s.p) + ' · @' + fC(l.cu) + ' Betano · <span class="dot ' + l.s.c + '"></span>' + l.s.c + '</small></li>';
         }).join('') + '</ul>' +
         '<p class="nota">' + esc(c.resumen) + '</p>' +
         '<button type="button" class="btn primario" data-comb="' + i + '">Cargar en mi combinada</button></article>';
@@ -412,9 +411,9 @@
   // ----------------------------------------------------------------- método
   function metodo() {
     var m = S.data.modelo || {};
-    $('#metodo').innerHTML =
-      '<h4>De dónde salen los datos</h4><p>Líneas, promedios, minutos, lesiones y cuotas de Betano/bet365 (con su escalera de líneas «más de»): <a href="https://ludoprops.com" rel="noopener">LudoProps</a>. Spread, total y moneyline: ESPN (DraftKings). Back-to-back: calendario de ESPN de los 3 días previos. <b>Stake no tiene API pública</b>: editá la cuota de cada pata en la combinada y compará con la <b>cuota justa</b>.</p>' +
-      '<h4>Escalera de líneas</h4><p>Para puntos, rebotes y asistencias se bajan las cuotas reales de Betano y bet365 de cada línea. Donde la casa no publica una línea (por ejemplo un +3,5 muy bajo) o en los demás mercados, la línea se calcula con el modelo y aparece sin cuota, con su <b>cuota justa</b> (1 / probabilidad). El modelo de cada línea se ajusta con la misma corrección que la línea principal.</p>' +
+    $$('#metodo').innerHTML =
+      '<h4>De dónde salen los datos</h4><p>Líneas, promedios, minutos, lesiones y cuotas de Betano (con su escalera de líneas «más de»): <a href="https://ludoprops.com" rel="noopener">LudoProps</a>. Spread, total y moneyline: ESPN (DraftKings). Back-to-back: calendario de ESPN de los 3 días previos. <b>Stake no tiene API pública</b>: editá la cuota de cada pata en la combinada y compará con la <b>cuota justa</b>.</p>' +
+      '<h4>Escalera de líneas</h4><p>Solo se muestran líneas con <b>cuota de Betano</b>. En puntos, rebotes y asistencias se baja la escalera completa que publica Betano (unas 6 líneas por jugador); en los demás mercados, solo la línea principal. Betano no publica líneas muy bajas, props de jugadores con pocos minutos ni algunos mercados (tiros, pérdidas, rebotes ofensivos y defensivos, primer cuarto). La <b>cuota justa</b> (1 / probabilidad) sirve para comparar con otra casa, como Stake.</p>' +
       '<h4>Probabilidad de cada línea</h4><p>El <b>modelo</b> promedia la estimación del sitio (proyección de minutos y rol) y una propia (proyección ± variabilidad de los últimos 10 partidos, con distribución binomial negativa para cifras bajas). Antes se ajusta por <b>riesgo de blowout</b> (spread → probabilidad de que el margen supere ' + (m.umbral_blowout || 14.5) + ' puntos → minutos que pierden los titulares) y por <b>back-to-back</b>. Cuando la línea tiene cuota, el resultado final es el <b>promedio entre el modelo y la probabilidad de la casa</b> sin su margen. Las líneas donde el modelo supera a la casa por más de 20 puntos se marcan.</p>' +
       '<h4>Semáforo (por línea)</h4><ul><li><b>Verde:</b> probabilidad ≥ 60%, promedios de temporada, últimos 10 y proyección por encima de la línea (≥ 4%), tasas de acierto a favor y ninguna en contra, ≥ 24 minutos, minutos estables, sin lesión y sin riesgo alto de blowout ni back-to-back (salvo que la línea sea muy segura).</li><li><b>Amarillo:</b> probabilidad ≥ 55% con casi todo a favor, pero con una alerta.</li><li><b>Rojo:</b> el resto. Automático si el jugador es dudoso (Questionable/Doubtful), el sitio lo marca "no sugerir" o juega pocos minutos.</li></ul>' +
       '<h4>Combinadas sugeridas</h4><p><b>Segura</b> (3 y 4 patas, cuota ≥ 1,99), <b>Intermedia</b> (4 y 5 patas, cuota ≥ 5) y <b>Soñadora</b> (7 patas, cuota ≥ 20). Para cada una se resuelve un problema de mochila: elegir las patas «más de» que maximizan la probabilidad conjunta con la cuota mínima, con un jugador por pata y solo líneas con cuota publicada, modelo completo y sin jugadores dudosos. La Segura usa solo líneas verdes de al menos 72%; la Intermedia, verdes y amarillas de al menos 60%; la Soñadora, de al menos 50%. Ninguna línea supera 96% porque siempre queda un riesgo que las estadísticas no ven.</p>' +
@@ -424,9 +423,9 @@
 
   // ----------------------------------------------------------------- eventos
   function abrirTicket(abrir) {
-    var t = $('#ticket'), movil = window.matchMedia('(max-width: 980px)').matches;
+    var t = $$('#ticket'), movil = window.matchMedia('(max-width: 980px)').matches;
     t.classList.toggle('abierto', abrir);
-    $('#fondo').hidden = !(abrir && movil);
+    $$('#fondo').hidden = !(abrir && movil);
     if (abrir && !movil) t.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
   function marcarPartido() {
@@ -434,39 +433,38 @@
       var on = el.dataset.gid === S.partido;
       el.classList.toggle('sel', on); el.querySelector('.p-sel').setAttribute('aria-pressed', on ? 'true' : 'false');
     });
-    $('#todos-partidos').setAttribute('aria-pressed', S.partido ? 'false' : 'true');
+    $$('#todos-partidos').setAttribute('aria-pressed', S.partido ? 'false' : 'true');
   }
 
   function enlazar() {
-    $('#f-color').addEventListener('click', function (e) {
+    $$('#f-color').addEventListener('click', function (e) {
       var b = e.target.closest('.sem'); if (!b) return;
       var c = b.dataset.c, on = !S.colores.has(c);
       if (on) S.colores.add(c); else S.colores.delete(c);
       b.setAttribute('aria-pressed', on ? 'true' : 'false'); aplicarFiltros();
     });
-    $('#f-grupo').addEventListener('click', function (e) {
+    $$('#f-grupo').addEventListener('click', function (e) {
       var b = e.target.closest('[data-g]'); if (!b) return;
       S.grupo = b.dataset.g;
       document.querySelectorAll('#f-grupo .chip').forEach(function (x) { x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
       aplicarFiltros();
     });
-    var t; $('#f-q').addEventListener('input', function (e) { clearTimeout(t); var v = e.target.value; t = setTimeout(function () { S.q = v; aplicarFiltros(); }, 150); });
-    $('#f-prob').addEventListener('change', function (e) { S.minP = e.target.value === 'rec' ? 'rec' : parseFloat(e.target.value); aplicarFiltros(); });
-    $('#f-mercado').addEventListener('change', function (e) { S.mercado = e.target.value; aplicarFiltros(); });
-    $('#f-orden').addEventListener('change', function (e) { S.orden = e.target.value; aplicarFiltros(); });
-    $('#f-cuota').addEventListener('change', function (e) { S.soloCuota = e.target.checked; aplicarFiltros(); });
-    $('#f-completo').addEventListener('change', function (e) { S.soloCompleto = e.target.checked; aplicarFiltros(); });
-    $('#f-menos').addEventListener('change', function (e) { S.menos = e.target.checked; pintarLista(); });
-    $('#ver-mas').addEventListener('click', function () { S.mostrar += PAGINA; pintarLista(); });
+    var t; $$('#f-q').addEventListener('input', function (e) { clearTimeout(t); var v = e.target.value; t = setTimeout(function () { S.q = v; aplicarFiltros(); }, 150); });
+    $$('#f-prob').addEventListener('change', function (e) { S.minP = e.target.value === 'rec' ? 'rec' : parseFloat(e.target.value); aplicarFiltros(); });
+    $$('#f-mercado').addEventListener('change', function (e) { S.mercado = e.target.value; aplicarFiltros(); });
+    $$('#f-orden').addEventListener('change', function (e) { S.orden = e.target.value; aplicarFiltros(); });
+    $$('#f-completo').addEventListener('change', function (e) { S.soloCompleto = e.target.checked; aplicarFiltros(); });
+    $$('#f-menos').addEventListener('change', function (e) { S.menos = e.target.checked; pintarLista(); });
+    $$('#ver-mas').addEventListener('click', function () { S.mostrar += PAGINA; pintarLista(); });
 
-    $('#partidos').addEventListener('click', function (e) {
+    $$('#partidos').addEventListener('click', function (e) {
       var b = e.target.closest('.p-sel'); if (!b) return;
       var gid = b.closest('.partido').dataset.gid;
       S.partido = S.partido === gid ? '' : gid; marcarPartido(); aplicarFiltros();
     });
-    $('#todos-partidos').addEventListener('click', function () { S.partido = ''; marcarPartido(); aplicarFiltros(); });
+    $$('#todos-partidos').addEventListener('click', function () { S.partido = ''; marcarPartido(); aplicarFiltros(); });
 
-    $('#lineas').addEventListener('click', function (e) {
+    $$('#lineas').addEventListener('click', function (e) {
       var art = e.target.closest('.linea'); if (!art) return;
       var g = S.porClave.get(art.dataset.k); if (!g) return;
       if (e.target.closest('[data-desplegar]')) {
@@ -477,12 +475,12 @@
       alternar(g, parseFloat(b.dataset.l), b.dataset.add);
     });
 
-    $('#abrir-ticket').addEventListener('click', function () { abrirTicket(!$('#ticket').classList.contains('abierto')); });
-    $('#cerrar-ticket').addEventListener('click', function () { abrirTicket(false); });
-    $('#fondo').addEventListener('click', function () { abrirTicket(false); });
+    $$('#abrir-ticket').addEventListener('click', function () { abrirTicket(!$$('#ticket').classList.contains('abierto')); });
+    $$('#cerrar-ticket').addEventListener('click', function () { abrirTicket(false); });
+    $$('#fondo').addEventListener('click', function () { abrirTicket(false); });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') abrirTicket(false); });
 
-    $('#ticket-cuerpo').addEventListener('click', function (e) {
+    $$('#ticket-cuerpo').addEventListener('click', function (e) {
       var q = e.target.closest('[data-quitar]');
       if (q) { S.ticket.splice(+q.dataset.quitar, 1); cambioTicket(); return; }
       if (e.target.id === 't-limpiar') { S.ticket = []; cambioTicket(); return; }
@@ -494,7 +492,7 @@
         guardar(CLAVE_GUARDADAS, S.guardadas); pintarGuardadas();
       }
     });
-    $('#ticket-cuerpo').addEventListener('input', function (e) {
+    $$('#ticket-cuerpo').addEventListener('input', function (e) {
       var inp = e.target;
       if (inp.dataset.cuota != null) {
         var v = parseFloat(String(inp.value).replace(',', '.')), l = S.ticket[+inp.dataset.cuota];
@@ -510,10 +508,10 @@
       }
     });
 
-    $('#sug-dia').addEventListener('click', function (e) {
+    $$('#sug-dia').addEventListener('click', function (e) {
       var b = e.target.closest('[data-comb]'); if (b) cargarCombo(+b.dataset.comb);
     });
-    $('#guardadas').addEventListener('click', function (e) {
+    $$('#guardadas').addEventListener('click', function (e) {
       var c = e.target.closest('[data-cargar]'), b = e.target.closest('[data-borrar]');
       if (c) { S.ticket = JSON.parse(JSON.stringify(S.guardadas[+c.dataset.cargar].legs)).filter(function (l) { return S.porClave.has(l.gkey); }); cambioTicket(); }
       if (b) { S.guardadas.splice(+b.dataset.borrar, 1); guardar(CLAVE_GUARDADAS, S.guardadas); pintarGuardadas(); }

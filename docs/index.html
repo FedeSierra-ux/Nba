@@ -7,7 +7,7 @@
 <meta name="description" content="Líneas «más de» de jugadores NBA con todas las escaleras de cuotas, semáforo de riesgo, spread, blowout y armador de combinadas.">
 <meta name="theme-color" content="#0e1116">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23f0a640'/%3E%3Cpath d='M2 16h28M16 2v28M6 6c6 5 6 15 0 20M26 6c-6 5-6 15 0 20' stroke='%230e1116' stroke-width='2' fill='none'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="estilos.css">
+<link rel="stylesheet" href="estilos.css?v=0.4.0">
 </head>
 <body>
 <header class="barra">
@@ -41,7 +41,7 @@
         <h2 id="h-lineas">Líneas «más de»</h2>
         <span class="contador" id="contador"></span>
       </div>
-      <p class="ayuda">Cada jugador muestra la <b>línea más alta</b> que todavía cumple la probabilidad mínima que elijas (o la recomendada por el semáforo). Tocá <b>«Ver todas las líneas»</b> para ver las demás con su cuota, probabilidad y cuota justa.</p>
+      <p class="ayuda">Solo líneas con <b>cuota de Betano</b>. Cada jugador muestra la <b>línea más alta</b> que todavía cumple la probabilidad mínima que elijas. Tocá <b>«N líneas ▾»</b> para ver las demás (+3,5, +4,5…) con su cuota y probabilidad.</p>
 
       <div class="chips-grupo" id="f-grupo" role="group" aria-label="Tipo de mercado">
         <button type="button" class="chip" data-g="todos" aria-pressed="true">Todos</button>
@@ -77,12 +77,14 @@
         </select>
       </div>
       <div class="filtros chico">
-        <label class="check"><input type="checkbox" id="f-cuota"> Solo líneas con cuota de la casa</label>
         <label class="check"><input type="checkbox" id="f-completo"> Solo modelo completo</label>
         <label class="check"><input type="checkbox" id="f-menos"> Mostrar también «menos» en el desplegable</label>
       </div>
 
-      <div id="lineas" class="lineas"></div>
+      <div class="tabla">
+        <div class="cab-tabla" aria-hidden="true"><span>Jugador</span><span>Betano</span><span>Últimos 10</span><span>Prob.</span><span>Últ. 10</span><span>Temp.</span><span></span></div>
+        <div id="lineas" class="lineas"></div>
+      </div>
       <button type="button" class="mas-btn" id="ver-mas" hidden>Ver más jugadores</button>
     </section>
 
@@ -104,10 +106,10 @@
     </div>
   </aside>
 </main>
-<footer class="pie">NBA Semáforo v0.3.0 · Análisis estadístico, no garantiza resultados. Apostá con responsabilidad.</footer>
+<footer class="pie">NBA Semáforo v0.4.0 · Análisis estadístico, no garantiza resultados. Apostá con responsabilidad.</footer>
 <div class="fondo" id="fondo" hidden></div>
-<script src="correlacion.js"></script>
-<script src="sugeridas.js"></script>
-<script src="app.js"></script>
+<script src="correlacion.js?v=0.4.0"></script>
+<script src="sugeridas.js?v=0.4.0"></script>
+<script src="app.js?v=0.4.0"></script>
 </body>
 </html>

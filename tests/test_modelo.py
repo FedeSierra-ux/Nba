@@ -101,13 +101,11 @@ class Escalera(unittest.TestCase):
         f = fila(**kw)
         e = act.evaluar(f, self.CTX)
         ladder = {"betano": {18.5: 1.20, 20.5: 1.50, 22.5: 1.95, 25.5: 3.00},
-                  "b365": {19.5: 1.25},
                   "temp": [24, 26, 25, 27, 23, 25, 26, 24, 28, 22, 25, 26]}
         return act.construir_grupo(f, e, ladder)
 
     def test_la_probabilidad_baja_al_subir_la_linea(self):
-        g = self.grupo()
-        ps = [s["p"] for s in g["pasos"]]
+        ps = [s["p"] for s in self.grupo()["pasos"]]
         self.assertEqual(ps, sorted(ps, reverse=True))
 
     def test_lineas_bajas_son_mas_seguras_y_la_recomendada_es_verde(self):
@@ -117,21 +115,24 @@ class Escalera(unittest.TestCase):
         self.assertGreater(bajo["p"], alto["p"])
         rec = next(s for s in g["pasos"] if s["L"] == g["rec"])
         self.assertEqual(rec["c"], "verde")
-        self.assertGreaterEqual(rec["L"], 20.5)   # la línea más alta que todavía es verde
 
     def test_cuota_justa_es_la_inversa_de_la_probabilidad(self):
         for s in self.grupo()["pasos"]:
             self.assertAlmostEqual(s["ju"], 1 / s["p"], delta=0.02)
 
-    def test_cuotas_de_las_dos_casas_se_asignan_a_su_linea(self):
+    def test_solo_hay_lineas_con_cuota_de_betano_y_nada_de_bet365(self):
         g = self.grupo()
-        self.assertEqual(next(s for s in g["pasos"] if s["L"] == 19.5)["cb"], 1.25)
-        self.assertEqual(next(s for s in g["pasos"] if s["L"] == 22.5)["cu"], 1.95)
+        self.assertEqual([s["L"] for s in g["pasos"]], [18.5, 20.5, 22.5, 25.5])
+        self.assertTrue(all(s["cu"] is not None and "cb" not in s for s in g["pasos"]))
 
-    def test_completa_con_lineas_del_modelo_sin_cuota(self):
-        g = self.grupo()
-        sinteticas = [s for s in g["pasos"] if s["cu"] is None and s["cb"] is None]
-        self.assertTrue(sinteticas)
+    def test_sin_cuota_en_betano_no_hay_grupo(self):
+        f = fila(casa=None)
+        self.assertIsNone(act.construir_grupo(f, act.evaluar(f, self.CTX), None))
+
+    def test_sin_escalera_queda_solo_la_linea_principal(self):
+        f = fila()
+        g = act.construir_grupo(f, act.evaluar(f, self.CTX), None)
+        self.assertEqual([s["L"] for s in g["pasos"]], [20.5])
 
     def test_incluye_la_linea_menos_de_la_principal(self):
         g = self.grupo()
@@ -139,10 +140,13 @@ class Escalera(unittest.TestCase):
         self.assertAlmostEqual(g["menos"]["p"] + next(s for s in g["pasos"] if s["L"] == 20.5)["p"], 1.0, delta=0.01)
 
     def test_lesionado_deja_toda_la_escalera_en_rojo(self):
-        g = self.grupo(estado="Questionable")
-        self.assertTrue(all(s["c"] == "rojo" for s in g["pasos"]))
+        self.assertTrue(all(s["c"] == "rojo" for s in self.grupo(estado="Questionable")["pasos"]))
 
     def test_ninguna_linea_supera_el_techo_de_probabilidad(self):
         g = self.grupo()
         self.assertTrue(all(s["p"] <= act.P_MAX + 1e-9 for s in g["pasos"]))
         self.assertTrue(all(s["ju"] >= 1 / act.P_MAX - 0.02 for s in g["pasos"]))
+
+
+if __name__ == "__main__":
+    unittest.main()

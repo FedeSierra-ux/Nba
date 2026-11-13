@@ -353,7 +353,7 @@ def evaluar(f, ctx):
         "id": f["id"], "j": f["nombre"], "eq": f["equipo"], "riv": f["rival"], "loc": bool(f["local"]),
         "gid": f["game_id"], "pos": f.get("posicion"), "m": merc, "mn": NOMBRE.get(merc, merc),
         "per": f.get("periodo"), "L": L, "lado": lado,
-        "cu": cuota, "cu_mas": cu_mas, "cu_menos": cu_menos, "b365": f.get("b365"),
+        "cu": cuota, "cu_mas": cu_mas, "cu_menos": cu_menos,
         "p": r3(p), "p_mkt": r3(p_mkt), "p_sitio": r3(None if p_sitio is None else (p_sitio if lado == 'mas' else 1 - p_sitio)),
         "p_propio": r3(p_propio if lado == 'mas' else 1 - p_propio),
         "p_modelo": r3(p_modelo if lado == 'mas' else 1 - p_modelo),
@@ -393,8 +393,8 @@ def r3(x):
     return None if x is None else round(x, 3)
 
 
-def paso(k, L, cu, cb, temp, principal, com):
-    """Evalúa 'más de L' para un jugador y mercado. cu = cuota Betano, cb = cuota bet365 (si existen)."""
+def paso(k, L, cu, temp, principal, com):
+    """Evalúa 'más de L' para un jugador y mercado. cu = cuota de Betano."""
     rojo, fl_com, graves = com
     p0 = p_mas(L, k["mu"], k["sd"])
     p_modelo = min(P_MAX_MODELO, sig(logit(p0) + k["d_modelo"]))
@@ -452,54 +452,32 @@ def paso(k, L, cu, cb, temp, principal, com):
         color = "rojo"
     if tope and color == "verde":
         color = "amarillo"
-    out = {"L": L, "cu": cu, "cb": cb, "p": r3(p), "pm": r3(p_modelo), "pk": r3(p_mkt), "ju": round(1 / max(p, .01), 2),
+    out = {"L": L, "cu": cu, "p": r3(p), "pm": r3(p_modelo), "pk": r3(p_mkt), "ju": round(1 / max(p, .01), 2),
            "c": color, "r10": r3(r10), "rt": r3(rt)}
     if fl:
         out["fl"] = fl
     return out
 
 
-def lineas_sinteticas(k, existentes):
-    """Líneas 'más de X' calculadas con el modelo para completar la escalera donde la casa no ofrece cuota."""
-    mu, sd = k["mu"], k["sd"]
-    salto = 1 if mu < 14 else 2 if mu < 30 else 3
-    tope = int(mu + 1.5 * sd) + 1
-    res = []
-    L = .5
-    while L <= tope:
-        if all(abs(L - e) > .01 for e in existentes) and .08 <= p_mas(L, mu, sd) <= .97:
-            res.append(L)
-        L += salto
-    res.sort(key=lambda x: abs(x - k["L"]))
-    return res[:12]
-
-
 def construir_grupo(f, e, ladder):
-    """Un jugador + mercado con todas sus líneas 'más de'. `e` es el resultado de evaluar()."""
+    """Un jugador + mercado con todas sus líneas «más de» que tienen cuota de Betano.
+    Devuelve None si Betano no ofrece ese mercado para el jugador."""
     k = e.pop("_k")
+    casa = f.get("casa")
+    if not casa:
+        return None
     rojo, fl_com, graves = banderas_comunes(k)
     extra = []
     if not k["completo"]:
         extra.append("modelo básico (sin proyección del sitio)")
-    if not k["tiene_mercado"]:
-        extra.append("sin cuota en Betano (no se puede contrastar con la casa)")
     betano = dict(ladder["betano"]) if ladder else {}
-    b365 = dict(ladder["b365"]) if ladder else {}
-    casa = f.get("casa")
-    if casa:
-        betano[f["linea"]] = casa["mas"]
-    if f.get("b365"):
-        b365.setdefault(f["linea"], f["b365"])
+    betano[f["linea"]] = casa["mas"]
     temp = ladder["temp"] if ladder else None
-    lineas = set(betano) | set(b365) | {f["linea"]}
-    lineas |= set(lineas_sinteticas(k, lineas))
     pasos = []
-    for L in sorted(lineas):
+    for L in sorted(betano):
         if L <= 0:
             continue
-        s = paso(k, L, betano.get(L), b365.get(L), temp, L == f["linea"], (rojo, fl_com, graves))
-        if .06 <= s["p"] <= .985 or L == f["linea"] or betano.get(L):
-            pasos.append(s)
+        pasos.append(paso(k, L, betano[L], temp, L == f["linea"], (rojo, fl_com, graves)))
     rec = None
     for color in ("verde", "amarillo"):
         cand = [s for s in pasos if s["c"] == color]
@@ -511,16 +489,15 @@ def construir_grupo(f, e, ladder):
     g = {k2: e[k2] for k2 in ("id", "j", "eq", "riv", "loc", "gid", "pos", "m", "mn", "per", "mu", "sd", "pt", "p10", "n",
                                 "ult", "min", "min_ult", "rol", "est", "cruce", "dvp", "aj", "mod") if k2 in e}
     g.update({"L": f["linea"], "temp": temp, "fl": rojo + fl_com + extra, "rec": rec, "pasos": pasos,
-              "cu_mas": casa["mas"] if casa else None, "cu_menos": casa["menos"] if casa else None})
-    if casa:
-        p_menos = 1 - k["p_over_main"]
-        g["menos"] = {"L": f["linea"], "cu": casa["menos"], "p": r3(p_menos),
-                      "c": e["c"] if e["lado"] == "menos" else "rojo", "ju": round(1 / max(p_menos, .01), 2)}
+              "cu_mas": casa["mas"], "cu_menos": casa["menos"]})
+    p_menos = 1 - k["p_over_main"]
+    g["menos"] = {"L": f["linea"], "cu": casa["menos"], "p": r3(p_menos),
+                  "c": e["c"] if e["lado"] == "menos" else "rojo", "ju": round(1 / max(p_menos, .01), 2)}
     return g
 
 
 def bajar_escaleras(filas, mercados, avisos, hilos=2, pausa=0.2):
-    """Escalera de cuotas (Betano / bet365) y partidos de la temporada, por jugador y mercado. ~1 s por consulta."""
+    """Escalera de cuotas de Betano y partidos de la temporada, por jugador y mercado. ~1 s por consulta."""
     objetivo = sorted({(f["id"], f["mercado"]) for f in filas
                        if f["mercado"] in mercados and f.get("casa") and f.get("periodo") is None and f.get("ult")})
     res = {}
@@ -529,9 +506,8 @@ def bajar_escaleras(filas, mercados, avisos, hilos=2, pausa=0.2):
         time.sleep(pausa)
         d = pedir(f"{LUDO}ficha?id={par[0]}&prop={par[1]}&rango=temp", intentos=2, espera=1.5)
         betano = {float(x["linea"]): float(x["cuota"]) for x in d.get("betano_esc") or []}
-        b365 = {float(x["linea"]): float(x["cuota"]) for x in (d.get("b365") or {}).get("escalera") or []}
         temp = [g["valor"] for g in d.get("grafico") or [] if g.get("valor") is not None]
-        return {"betano": betano, "b365": b365, "temp": temp}
+        return {"betano": betano, "temp": temp}
 
     with ThreadPoolExecutor(hilos) as ex:
         futs = {par: ex.submit(uno, par) for par in objetivo}
@@ -550,7 +526,7 @@ def main():
     ap.add_argument("--salida", default=os.path.join(os.path.dirname(__file__), "..", "docs", "data"))
     ap.add_argument("--mercados", default="pts,reb,ast",
                     help="Mercados para los que se baja la escalera real de cuotas (≈1 consulta por jugador y mercado). "
-                         "'todos' baja todos (lento, ≈1.600 consultas). Los demás usan líneas calculadas por el modelo.")
+                         "'todos' baja todos los mercados que Betano ofrece. Los demás muestran solo su línea principal.")
     ap.add_argument("--hilos", type=int, default=2, help="Consultas simultáneas a LudoProps (se recomienda 1-2).")
     a = ap.parse_args()
     fecha = a.fecha or dt.datetime.now(ZoneInfo("America/New_York")).date().isoformat()
@@ -569,7 +545,9 @@ def main():
     for f in tab.get("filas", []):
         e = evaluar(f, ctx)
         if e:
-            grupos.append(construir_grupo(f, e, escaleras.get((f["id"], f["mercado"]))))
+            g = construir_grupo(f, e, escaleras.get((f["id"], f["mercado"])))
+            if g:
+                grupos.append(g)
     orden = {'verde': 0, 'amarillo': 1, 'rojo': 2}
     def color_rec(g):
         return next(x["c"] for x in g["pasos"] if x["L"] == g["rec"])

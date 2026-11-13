@@ -15,7 +15,7 @@
       resumen: 'Poco probable, pero cada pata tiene respaldo en promedios, minutos y contexto. Para jugar un poco: apostá poco.' }
   ];
 
-  var cuotaDe = function (s) { return s.cu != null ? s.cu : (s.cb != null ? s.cb : null); };
+  var cuotaDe = function (s) { return s.cu != null ? s.cu : null; };   // solo cuotas de Betano
 
   function candidatas(grupos, nivel, excluidos) {
     var out = [];

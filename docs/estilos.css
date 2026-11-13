@@ -171,3 +171,46 @@ h2 { font-size: 18px; margin: 0; } h3 { font-size: 14px; margin: 0 0 8px; color:
 .comb-patas small { display: block; color: var(--suave); font-size: 12px; }
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 3px; background: var(--borde); }
 .dot.verde { background: var(--verde); } .dot.amarillo { background: var(--amarillo); } .dot.rojo { background: var(--rojo); }
+
+/* v0.4: tabla de líneas estilo LudoProps, solo cuota de Betano */
+.tabla { background: var(--panel); border: 1px solid var(--borde); border-radius: 14px; overflow: hidden; }
+.cab-tabla, .tabla .linea { display: grid; grid-template-columns: minmax(0, 2.3fr) 92px minmax(130px, 1.3fr) 64px 64px 64px 120px; gap: 4px 12px; align-items: center; }
+.cab-tabla { padding: 12px 16px; color: var(--suave); font-size: 13px; border-bottom: 1px solid var(--borde); }
+.cab-tabla span:nth-child(n+4) { text-align: center; }
+.tabla .lineas { display: block; }
+.tabla .linea { background: transparent; border: 0; border-left: 4px solid transparent; border-bottom: 1px solid var(--borde); border-radius: 0; padding: 14px 16px 14px 12px; }
+.tabla .linea:last-child { border-bottom: 0; }
+.tabla .linea.c-verde { border-left-color: var(--verde); } .tabla .linea.c-amarillo { border-left-color: var(--amarillo); } .tabla .linea.c-rojo { border-left-color: var(--rojo); }
+.col-jug { min-width: 0; display: grid; gap: 2px; }
+.col-jug .nombre { font-size: 16.5px; }
+.mut { color: var(--suave); } .chico { font-size: 12.5px; }
+.apuesta { font-size: 15px; }
+.col-cuota { display: grid; justify-items: start; gap: 3px; }
+.badge-cuota { display: inline-block; border: 1px solid var(--borde); background: var(--panel2); border-radius: 8px; padding: 2px 9px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.badge-cuota.grande { font-size: 17px; padding: 4px 11px; }
+.col-barras { display: grid; gap: 3px; min-width: 0; }
+svg.mini { width: 100%; max-width: 150px; height: 40px; display: block; }
+svg.mini rect.ok { fill: #19a33a; } svg.mini rect.no { fill: var(--rojo); }
+svg.mini .raya { stroke: #e8edf3; stroke-opacity: .8; stroke-width: 1; stroke-dasharray: 3 3; }
+.col-nums { display: contents; }
+.col-num { text-align: center; font-size: 19px; font-variant-numeric: tabular-nums; }
+.p-alta { color: var(--verde); } .p-media { color: var(--amarillo); } .p-baja { color: var(--rojo); }
+.col-acc { display: grid; gap: 6px; }
+.col-acc .add { text-align: center; }
+.col-flags { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px; }
+.col-flags .tag { font-size: 11.5px; }
+.tabla .l-escalera { grid-column: 1 / -1; }
+.tabla .vacio { border: 0; border-radius: 0; }
+
+@media (max-width: 900px) {
+  .cab-tabla { display: none; }
+  .tabla .linea { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "jug cuota" "barras barras" "nums nums" "acc acc" "flags flags" "esc esc"; padding: 14px 12px; }
+  .col-jug { grid-area: jug; } .col-cuota { grid-area: cuota; justify-items: end; } .col-barras { grid-area: barras; }
+  .col-barras svg.mini { max-width: none; height: 46px; }
+  .col-num { display: inline-flex; flex-direction: column; font-size: 18px; }
+  .col-num::before { content: attr(data-col); font-size: 11.5px; color: var(--suave); }
+  .col-nums { grid-area: nums; display: flex; gap: 28px; }
+  .tabla .linea { row-gap: 10px; }
+  .col-acc { grid-area: acc; grid-template-columns: 1fr 1fr; }
+  .col-flags { grid-area: flags; } .tabla .l-escalera { grid-area: esc; }
+}
