@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NBA Semáforo</title>
+<meta name="description" content="Líneas de jugadores NBA con semáforo de riesgo, spread, blowout y armador de combinadas.">
+<meta name="theme-color" content="#0e1116">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23f0a640'/%3E%3Cpath d='M2 16h28M16 2v28M6 6c6 5 6 15 0 20M26 6c-6 5-6 15 0 20' stroke='%230e1116' stroke-width='2' fill='none'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+<header class="barra">
+  <div class="marca"><span class="bola" aria-hidden="true"></span> NBA Semáforo</div>
+  <div class="barra-info" id="info-actualizado" aria-live="polite">Cargando…</div>
+  <button class="btn-ticket" id="abrir-ticket" type="button" aria-controls="ticket">
+    Combinada <b id="ticket-n">0</b> · <span id="ticket-resumen">—</span>
+  </button>
+</header>
+
+<div class="aviso" id="aviso" hidden></div>
+
+<main class="layout">
+  <div class="principal">
+    <section aria-labelledby="h-partidos">
+      <div class="seccion-cab">
+        <h2 id="h-partidos">Partidos de hoy</h2>
+        <button type="button" class="chip" id="todos-partidos" aria-pressed="true">Todos</button>
+      </div>
+      <div id="partidos" class="partidos"></div>
+    </section>
+
+    <section aria-labelledby="h-lineas">
+      <div class="seccion-cab">
+        <h2 id="h-lineas">Líneas</h2>
+        <span class="contador" id="contador"></span>
+      </div>
+
+      <div class="filtros" role="group" aria-label="Filtros">
+        <div class="grupo-colores" id="f-color" role="group" aria-label="Semáforo">
+          <button type="button" class="sem verde" data-c="verde" aria-pressed="true">● Verde <i id="n-verde"></i></button>
+          <button type="button" class="sem amarillo" data-c="amarillo" aria-pressed="true">● Amarillo <i id="n-amarillo"></i></button>
+          <button type="button" class="sem rojo" data-c="rojo" aria-pressed="false">● Rojo <i id="n-rojo"></i></button>
+        </div>
+        <input id="f-q" type="search" placeholder="Buscar jugador o equipo" aria-label="Buscar jugador o equipo" autocomplete="off">
+        <select id="f-mercado" aria-label="Mercado"><option value="">Todos los mercados</option></select>
+        <select id="f-lado" aria-label="Lado recomendado">
+          <option value="">Más y Menos</option><option value="mas">Solo Más</option><option value="menos">Solo Menos</option>
+        </select>
+        <select id="f-orden" aria-label="Ordenar por">
+          <option value="p">Mayor probabilidad</option><option value="cuota">Mayor cuota</option>
+          <option value="ev">Mayor ventaja vs. cuota</option><option value="min">Más minutos</option>
+        </select>
+        <label class="check"><input type="checkbox" id="f-cuota"> Solo con cuota</label>
+        <label class="check"><input type="checkbox" id="f-completo"> Solo modelo completo</label>
+      </div>
+
+      <div id="lineas" class="lineas"></div>
+      <button type="button" class="mas-btn" id="ver-mas" hidden>Ver más líneas</button>
+    </section>
+
+    <details class="metodo">
+      <summary>Cómo se calcula el semáforo y qué límites tiene</summary>
+      <div id="metodo"></div>
+    </details>
+  </div>
+
+  <aside class="ticket" id="ticket" aria-label="Armador de combinadas">
+    <div class="ticket-cab">
+      <h2>Mi combinada</h2>
+      <button type="button" class="cerrar" id="cerrar-ticket" aria-label="Cerrar">×</button>
+    </div>
+    <div id="ticket-cuerpo"></div>
+    <div class="sugeridas">
+      <h3>Armar sugerida</h3>
+      <div class="sug-botones" id="sugeridas"></div>
+      <p class="nota">Una pata por partido, mezclando mercados; solo líneas verdes.</p>
+    </div>
+    <div class="guardadas">
+      <h3>Combinadas guardadas</h3>
+      <div id="guardadas"></div>
+    </div>
+  </aside>
+</main>
+<div class="fondo" id="fondo" hidden></div>
+<script src="correlacion.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
