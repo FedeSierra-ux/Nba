@@ -21,6 +21,7 @@ UA = "NbaSemaforo/1.0 (uso personal; consultas espaciadas)"
 # --------------------------------------------------------------------------- parámetros del modelo
 SD_PARTIDO = 12.0        # desvío del margen final de un partido NBA (puntos)
 UMBRAL_BLOWOUT = 14.5    # margen a partir del cual los titulares suelen sentarse
+CUOTA_MIN = 1.30        # no se muestran líneas que paguen menos (pedido del usuario)
 P_MAX = 0.96            # techo de probabilidad por línea (lesión en el partido, faltas, minutos de basura)
 P_MAX_MODELO = 0.97
 ESTADOS_ROJO = {"Questionable", "Doubtful", "Out", "Suspension", "Suspended", "Inactive", "Day-To-Day"}
@@ -495,7 +496,7 @@ def construir_grupo(f, e, ladder):
     temp = ladder["temp"] if ladder else None
     pasos = []
     for L in sorted(betano):
-        if L <= 0:
+        if L <= 0 or betano[L] < CUOTA_MIN:
             continue
         pasos.append(paso(k, L, betano[L], temp, L == f["linea"], (rojo, fl_com, graves)))
     if not pasos:
