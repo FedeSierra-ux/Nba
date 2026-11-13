@@ -1,0 +1,41 @@
+name: Actualizar datos NBA
+
+# Baja las líneas del día y recalcula el semáforo. Corre en la franja de partidos (UTC) y a mano.
+on:
+  schedule:
+    - cron: "15 15,18,21 * * *"   # mediodía/tarde ET, antes del reporte oficial de lesiones
+    - cron: "45 22 * * *"          # justo después del reporte de las 17:00 ET
+    - cron: "30 0,2 * * *"         # tarde-noche ET (partidos del Oeste)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: actualizar-datos
+  cancel-in-progress: false
+
+jobs:
+  actualizar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Pruebas
+        run: python3 -m unittest discover -s tests
+      - name: Generar datos
+        run: python3 scripts/actualizar.py
+      - name: Publicar cambios
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/data
+          if git diff --cached --quiet; then
+            echo "Sin cambios"
+          else
+            git commit -m "Datos actualizados $(date -u +%Y-%m-%dT%H:%MZ)"
+            git push
+          fi

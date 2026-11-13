@@ -226,7 +226,13 @@ def evaluar(f, ctx):
     p_sitio = None
     if f.get("prob") is not None:
         p_sitio = min(.97, max(.03, f["prob"] + (p_propio - p_propio0)))
-    p_over = p_propio if p_sitio is None else .5 * p_sitio + .5 * p_propio
+    p_modelo = p_propio if p_sitio is None else .5 * p_sitio + .5 * p_propio
+    casa = f.get("casa")
+    p_mkt_over = casa["prob"] if (casa and casa.get("prob") is not None) else None
+    # Al elegir siempre el lado donde el modelo más discrepa con la casa se sobreestima (maldición del ganador):
+    # cuando hay cuota, se promedia el modelo con la probabilidad de la casa sin margen.
+    # Sin cuota no hay con qué contrastar: se acerca el modelo a 50% en la misma proporción.
+    p_over = (.5 * p_modelo + .5 * .5) if p_mkt_over is None else .5 * p_modelo + .5 * p_mkt_over
     lado = 'mas' if p_over >= .5 else 'menos'
     p = p_over if lado == 'mas' else 1 - p_over
     sg = 1 if lado == 'mas' else -1
@@ -271,36 +277,43 @@ def evaluar(f, ctx):
     if p_sitio is not None and abs(p_propio - p_sitio) > .15:
         graves += 1; banderas.append("los modelos discrepan")
     tope_amarillo = False
+    sp = g.get('spread')
+    texto_spread = f"spread {sp:g}" if sp is not None else "spread no disponible"
+    if p_mkt_over is not None:
+        gap = (p_modelo - p_mkt_over) if lado == 'mas' else (p_mkt_over - p_modelo)
+        if gap > .20:
+            graves += 2
+            banderas.append(f"el modelo lo ve mucho más probable que la casa ({p_modelo if lado == 'mas' else 1 - p_modelo:.0%} vs {p_mkt_over if lado == 'mas' else 1 - p_mkt_over:.0%})")
     if r is not None and r >= .45 and min_proy >= 26 and lado == 'mas':
         tope_amarillo = True
-        banderas.append(f"riesgo de blowout alto (spread {g.get('spread'):g}): titulares pueden sentarse")
+        banderas.append(f"riesgo de blowout alto ({texto_spread}): titulares pueden sentarse")
     elif r is not None and r >= .38 and min_proy >= 26 and lado == 'mas':
-        banderas.append(f"riesgo de blowout medio (spread {g.get('spread'):g})")
+        banderas.append(f"riesgo de blowout medio ({texto_spread})")
     if desc.get("b2b") and min_proy >= 28 and lado == 'mas':
         tope_amarillo = True; banderas.append("back-to-back")
     if not completo:
         tope_amarillo = True; banderas.append("modelo básico (sin proyección del sitio)")
-    if f.get("casa") is None:
-        banderas.append("sin cuota en Betano")
+    if casa is None:
+        tope_amarillo = True
+        banderas.append("sin cuota en Betano (no se puede contrastar con la casa)")
 
     if rojo:
         color = 'rojo'
-    elif p >= .62 and prom_ok == 3 and a_favor >= 2 and en_contra == 0 and graves == 0 and min_proy >= 24 and estado is None:
+    elif p >= .60 and prom_ok == 3 and a_favor >= 2 and en_contra == 0 and graves == 0 and min_proy >= 24 and estado is None:
         color = 'verde'
-    elif p >= .56 and prom_mal == 0 and prom_ok >= 2 and graves <= 1 and en_contra == 0:
+    elif p >= .55 and prom_mal == 0 and prom_ok >= 2 and graves <= 1 and en_contra == 0:
         color = 'amarillo'
     else:
         color = 'rojo'
     if tope_amarillo and color == 'verde':
         color = 'amarillo'
 
-    casa = f.get("casa")
     cu_mas = casa["mas"] if casa else None
     cu_menos = casa["menos"] if casa else None
     cuota = (cu_mas if lado == 'mas' else cu_menos) if casa else None
     p_mkt = None
-    if casa and casa.get("prob") is not None:
-        p_mkt = casa["prob"] if lado == 'mas' else 1 - casa["prob"]
+    if p_mkt_over is not None:
+        p_mkt = p_mkt_over if lado == 'mas' else 1 - p_mkt_over
     ajuste = f.get("ajuste_texto")
     if notas:
         ajuste = (ajuste + " · " if ajuste else "") + " · ".join(notas)
@@ -314,6 +327,7 @@ def evaluar(f, ctx):
         "cu": cuota, "cu_mas": cu_mas, "cu_menos": cu_menos, "b365": f.get("b365"),
         "p": r3(p), "p_mkt": r3(p_mkt), "p_sitio": r3(None if p_sitio is None else (p_sitio if lado == 'mas' else 1 - p_sitio)),
         "p_propio": r3(p_propio if lado == 'mas' else 1 - p_propio),
+        "p_modelo": r3(p_modelo if lado == 'mas' else 1 - p_modelo),
         "mu": round(mu, 2), "mu0": round(mu0, 2), "sd": round(sd, 2),
         "pt": None if prom_t is None else round(prom_t, 2), "p10": round(m10, 2), "n": n_t,
         "ult": ult, "r10": r3(r10), "rt": r3(rtemp), "rh": r3(rh2h),
