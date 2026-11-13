@@ -124,8 +124,74 @@ var NbaUtil = (function () {
     return p.filter(function (s) { return (RANGO[s.c] || 0) === mejor; }).reduce(function (a, b) { return b.L > a.L ? b : a; });
   }
 
+  // ----------------------------------------------------------------- contexto: splits de la temporada (tg)
+  var mediana = function (a) {
+    var s = a.slice().sort(function (x, y) { return x - y; }), n = s.length;
+    return n ? (n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2) : null;
+  };
+  var esN = function (x) { return typeof x === 'number' && isFinite(x); };
+  /* tg: [[valor, minutos, local 1|0, margen, b2b 1|0], …] (del más viejo al más nuevo) y la línea L.
+     → {mediana (minutos), filas: [{id, nombre, n, prom, k (partidos que superó L), sup (k / n)}]}.
+     Margen null o minutos null: ese partido no entra en los splits que los necesitan. */
+  function splits(tg, L) {
+    var filas = (Array.isArray(tg) ? tg : []).filter(function (r) { return Array.isArray(r) && esN(r[0]); });
+    var med = mediana(filas.map(function (r) { return r[1]; }).filter(esN));
+    var defs = [
+      ['todos', 'Toda la temporada', function () { return true; }],
+      ['local', 'Local', function (r) { return r[2] === 1; }],
+      ['visitante', 'Visitante', function (r) { return r[2] === 0; }],
+      ['paliza', 'Paliza (margen ≥ 15)', function (r) { return esN(r[3]) && Math.abs(r[3]) >= 15; }],
+      ['parejo', 'Partido parejo (margen ≤ 8)', function (r) { return esN(r[3]) && Math.abs(r[3]) <= 8; }],
+      ['b2b', 'Back-to-back', function (r) { return r[4] === 1; }],
+      ['minutos', 'Minutos normales', function (r) { return med != null && esN(r[1]) && r[1] >= 0.85 * med; }]
+    ];
+    return { mediana: med, filas: defs.map(function (d) {
+      var x = filas.filter(d[2]), n = x.length, k = x.filter(function (r) { return r[0] > L; }).length;
+      return { id: d[0], nombre: d[1], n: n, k: k, prom: n ? x.reduce(function (a, r) { return a + r[0]; }, 0) / n : null, sup: n ? k / n : null };
+    }) };
+  }
+  /* Qué situaciones aplican HOY al grupo g en el partido p: local/visitante, back-to-back y riesgo alto de paliza. */
+  function contextoHoy(g, p) {
+    var hoy = {}; hoy[g.loc ? 'local' : 'visitante'] = true;
+    var d = p && p.descanso && p.descanso[g.eq];
+    if (d && d.b2b) hoy.b2b = true;
+    if (p && p.p_blowout != null && +p.p_blowout >= 0.45) hoy.paliza = true;
+    return hoy;
+  }
+
+  // ----------------------------------------------------------------- armá tu combinada
+  var TIPOS = { pts: ['pts'], reb: ['reb'], ast: ['ast'], combos: ['pra', 'pr', 'pa', 'ra'] };
+  /* Tipo de mercado del grupo: 'pts' | 'reb' | 'ast' | 'combos' | 'otros' (los de un período van a «otros»). */
+  function tipoMercado(g) {
+    if (g.per) return 'otros';
+    for (var t in TIPOS) if (TIPOS[t].indexOf(g.m) >= 0) return t;
+    return 'otros';
+  }
+  /* Combinada a medida con el optimizador de las sugeridas (Sug = window.Sugeridas).
+     op: {T, n, pmin, colores:[…], porJuego, tipos:[…], excluidos:{id:true}}; grupos: solo partidos que no empezaron.
+     → {legs:[{g, s, cu}], nivel} o {error: 'pocas' | 'cuota', jugadores, maxCuota, nivel}. */
+  function armarCombinada(grupos, op, Sug) {
+    var nivel = { id: 'propia', nombre: 'A tu medida', T: op.T, colores: op.colores.slice(), pmin: op.pmin, cmin: 1.10, porJuego: op.porJuego, porMercado: op.n };
+    var gs = grupos.filter(function (g) { return op.tipos.indexOf(tipoMercado(g)) >= 0; });
+    var pool = Sug.candidatas(gs, nivel, op.excluidos || {});
+    var jug = {}; pool.forEach(function (x) { jug[x.g.id] = 1; });
+    // la cuota más alta alcanzable respetando las reglas (voraz por cuota): sirve para explicar por qué no se puede
+    var orden = pool.slice().sort(function (a, b) { return b.lc - a.lc; }), elegidas = [], porJ = {}, usados = {};
+    for (var i = 0; i < orden.length && elegidas.length < op.n; i++) {
+      var x = orden[i]; if (usados[x.g.id] || (porJ[x.g.gid] || 0) >= op.porJuego) continue;
+      usados[x.g.id] = 1; porJ[x.g.gid] = (porJ[x.g.gid] || 0) + 1; elegidas.push(x);
+    }
+    var maxCuota = elegidas.reduce(function (a, x) { return a * x.cu; }, 1);
+    var base = { nivel: nivel, jugadores: Object.keys(jug).length, alcanza: elegidas.length, maxCuota: elegidas.length === op.n ? maxCuota : null, candidatas: pool.length };
+    if (elegidas.length < op.n) return Object.assign({ error: 'pocas' }, base);
+    var legs = Sug.optimizar(pool, op.n, nivel);
+    if (!legs) return Object.assign({ error: 'cuota' }, base);
+    return Object.assign({ legs: legs.map(function (x) { return { g: x.g, s: x.s, cu: x.cu }; }) }, base);
+  }
+
   return { fL: fL, fC: fC, fP: fP, fMonto: fMonto, fmtML: fmtML, leerDecimal: leerDecimal, leerCuota: leerCuota, leerMonto: leerMonto,
-    corto: corto, etiquetas: etiquetas, gkey: gkey, cuotaDe: cuotaDe, nuevaPata: nuevaPata, refrescarPata: refrescarPata, recPaso: recPaso, RANGO: RANGO };
+    corto: corto, etiquetas: etiquetas, gkey: gkey, cuotaDe: cuotaDe, nuevaPata: nuevaPata, refrescarPata: refrescarPata, recPaso: recPaso, RANGO: RANGO,
+    splits: splits, contextoHoy: contextoHoy, tipoMercado: tipoMercado, armarCombinada: armarCombinada };
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = NbaUtil;
 
@@ -145,7 +211,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = NbaUtil;
   var COLORES = ['verde', 'amarillo', 'rojo'];
   var color = function (c) { return COLORES.indexOf(c) >= 0 ? c : 'rojo'; };
   var LADO = { mas: 'Más de', menos: 'Menos de' };
-  var CLAVE_TICKET = 'nba_semaforo_ticket_v2', CLAVE_GUARDADAS = 'nba_semaforo_guardadas_v2';
+  var CLAVE_TICKET = 'nba_semaforo_ticket_v2', CLAVE_GUARDADAS = 'nba_semaforo_guardadas_v2', CLAVE_NOMBRES = 'nba_semaforo_nombres_v1';
   var PAGINA = 40;
   var GRUPOS = { pts: ['pts'], reb: ['reb'], ast: ['ast'], combos: ['pra', 'pr', 'pa', 'ra'] };
   var PRINCIPALES = ['pts', 'reb', 'ast', 'pra', 'pr', 'pa', 'ra'];
@@ -157,7 +223,8 @@ if (typeof module !== 'undefined' && module.exports) module.exports = NbaUtil;
     minP: 0.70, q: '', mercado: '', orden: 'cuota', soloCompleto: false, menos: false,
     mostrar: PAGINA, ticket: [], guardadas: [], stake: 1000, lista: [], pos: new Map(), pintadas: new Set(), abiertos: new Set(), notaTicket: '',
     // secciones: vista visible, última vista principal (no «combinada»), scroll por vista y qué falta pintar
-    vista: '', ultimaPrincipal: 'partidos', scroll: {}, sucio: { filtro: true }, hecho: {}
+    vista: '', ultimaPrincipal: 'partidos', scroll: {}, sucio: { filtro: true }, hecho: {},
+    porId: new Map(), porGid: new Map(), nombres: {}
   };
 
   // ----------------------------------------------------------------- almacenamiento (puede fallar: modo privado, datos corruptos)
@@ -185,6 +252,40 @@ if (typeof module !== 'undefined' && module.exports) module.exports = NbaUtil;
   var badgeEstado = function (e) { return e ? '<span class="estado-badge ' + (e === 3 ? 'final' : 'vivo') + '">' + (ESTADO[e] || 'Empezado') + '</span>' : ''; };
   var descPata = function (l) { return String(l.j || 'Pata') + ' ' + (LADO[l.lado] || 'más de').toLowerCase() + ' ' + fL(l.L) + ' ' + lectura(l); };
   var despues = function (f) { requestAnimationFrame(function () { setTimeout(f, 0); }); };
+  var partidoDe = function (gid) { return S.porGid.get(gid) || null; };
+
+  /* JSON de data/ con caché en memoria (ttl en ms; sin ttl = toda la sesión). 404 → null (todavía no existe). */
+  var CACHE = new Map();
+  function pedirJSON(url, ttl) {
+    var c = CACHE.get(url);
+    if (c && (ttl == null || Date.now() - c.t < ttl)) return c.p;
+    var p = fetch(url, { cache: 'no-cache' }).then(function (r) {
+      if (r.status === 404) return null;
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    });
+    CACHE.set(url, { t: Date.now(), p: p });
+    p.catch(function () { if (CACHE.get(url) && CACHE.get(url).p === p) CACHE.delete(url); });
+    return p;
+  }
+
+  /* Nombres de jugadores por id: el historial y los resultados solo guardan ids. Se buscan en hoy.json y, si no está,
+     en una libreta local que se completa con cada día que se abre la página (los que no juegan hoy). */
+  function recordarNombres() {
+    var m = leer(CLAVE_NOMBRES, {});
+    if (!m || typeof m !== 'object' || Array.isArray(m)) m = {};
+    S.grupos.forEach(function (g) { m[g.id] = [String(g.j), String(g.eq)]; });
+    var ks = Object.keys(m);
+    if (ks.length > 2500) ks.slice(0, ks.length - 2500).forEach(function (k) { delete m[k]; });
+    S.nombres = m; guardar(CLAVE_NOMBRES, m);
+  }
+  function nombreDe(id, x) {
+    if (x && typeof x.j === 'string' && x.j) return { j: x.j, eq: typeof x.eq === 'string' ? x.eq : '' };
+    var g = S.porId.get(+id); if (g) return { j: g.j, eq: g.eq };
+    var n = S.nombres[id];
+    if (Array.isArray(n) && typeof n[0] === 'string') return { j: n[0], eq: typeof n[1] === 'string' ? n[1] : '' };
+    return { j: 'Jugador #' + id, eq: '' };
+  }
 
   // ----------------------------------------------------------------- carga
   function cargar() {
@@ -215,6 +316,8 @@ if (typeof module !== 'undefined' && module.exports) module.exports = NbaUtil;
     S.grupos = d.grupos.filter(function (g) { return g && Array.isArray(g.pasos) && g.pasos.length && MERCADOS_FUERA.indexOf(g.m) < 0; });
     S.grupos.forEach(function (g) { g._q = norm(g.j + ' ' + g.eq + ' ' + g.riv); });   // texto de búsqueda, una sola vez
     S.porClave = new Map(S.grupos.map(function (g) { return [gkey(g), g]; }));
+    S.porId = new Map(S.grupos.map(function (g) { return [g.id, g]; }));
+    S.porGid = new Map(d.partidos.map(function (p) { return [p.gid, p]; }));
     S.empezado = new Map();
     d.partidos.forEach(function (p) { var e = +p.estado; if (e && e !== 1) S.empezado.set(p.gid, e); });
     leerControles();
@@ -233,12 +336,14 @@ if (typeof module !== 'undefined' && module.exports) module.exports = NbaUtil;
         }
       }
     }
+    S.nombres = leer(CLAVE_NOMBRES, {}) || {};
     cabecera(); partidos(); selectorPartidos(); selectorMercados();
-    enlazar(); pintarTicket(); pintarGuardadas();
+    MODULOS.forEach(function (m) { if (window[m] && window[m].init) window[m].init(APP); });
+    enlazar(); enlazarArmador(); pintarTicket(); pintarGuardadas();
     if (!esMovil()) $$('#mas-filtros').open = true;
     enrutar({ inicial: true });              // pinta solo la sección visible (Líneas, Sugeridas y Método se pintan al entrar)
     // Las sugeridas no hacen falta para el primer pintado: se calculan en una tarea aparte, después del frame.
-    despues(function () { prepararSugeridas(); });
+    despues(function () { prepararSugeridas(); recordarNombres(); });
   }
 
   /* Bug de «Atrás» desde otra página: el navegador restaura los controles pero S arranca con los valores por defecto. */
@@ -439,7 +544,24 @@ if (typeof module !== 'undefined' && module.exports) module.exports = NbaUtil;
       (tags ? '<div class="col-flags">' + tags + '</div>' : '') +
       '<div class="col-acc">' + botonMas(s.L, activo, !!est && !activo, false) +
         (varias ? '<button type="button" class="desplegar" data-desplegar aria-expanded="' + (abierto ? 'true' : 'false') + '">' + (abierto ? 'Ocultar ▴' : g.pasos.length + ' líneas ▾') + '</button>' : '') + '</div>' +
-      (abierto ? '<div class="l-escalera">' + escalera(g, s) + '</div>' : '') + '</article>';
+      (abierto ? '<div class="l-escalera">' + escalera(g, s) + contexto(g, s) + '</div>' : '') + '</article>';
+  }
+
+  /* Contexto (puntos, rebotes y asistencias con tg): cómo le fue en la temporada en cada situación con la línea mostrada. */
+  function contexto(g, s) {
+    if (['pts', 'reb', 'ast'].indexOf(g.m) < 0 || g.per || !Array.isArray(g.tg) || !g.tg.length) return '';
+    var sp = U.splits(g.tg, s.L), hoy = U.contextoHoy(g, partidoDe(g.gid)), L = fL(s.L);
+    var filas = sp.filas.map(function (f) {
+      var chica = f.n < 5, aplica = !!hoy[f.id];
+      var nombre = f.nombre + (f.id === 'minutos' && sp.mediana != null ? ' (≥ ' + Math.round(0.85 * sp.mediana) + ' min)' : '');
+      return '<tr class="ctx-' + f.id + (aplica ? ' hoy' : '') + (chica ? ' chica' : '') + '"><th scope="row">' + esc(nombre) +
+        (aplica ? ' <span class="hoy-tag">hoy</span>' : '') + (chica ? ' <small class="ctx-chica">muestra chica</small>' : '') + '</th>' +
+        '<td class="ctx-n"><b>' + f.n + '</b></td><td>' + (f.prom == null ? '—' : fL(f.prom)) + '</td>' +
+        '<td>' + (f.n ? '<b>' + fP(f.sup) + '</b> <small>' + f.k + '/' + f.n + '</small>' : '—') + '</td></tr>';
+    }).join('');
+    return '<div class="contexto"><p class="ctx-tit"><b>Contexto</b> · temporada con la línea ' + L + '</p>' +
+      '<table><thead><tr><th scope="col">Situación</th><th scope="col"><abbr title="Partidos jugados">PJ</abbr></th><th scope="col">Prom.</th><th scope="col">Superó ' + L + '</th></tr></thead><tbody>' + filas + '</tbody></table>' +
+      '<p class="nota">Es contexto, no una predicción: con pocos partidos (PJ) el porcentaje cambia mucho por azar. «Hoy» marca las situaciones de este partido.</p></div>';
   }
 
   function contador() {
@@ -520,6 +642,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = NbaUtil;
     S.ticket.forEach(function (l) { claves.add(l.gkey); });
     S.pintadas = new Set(S.ticket.map(function (l) { return l.gkey; }));
     repintarFilas(claves);
+    if (window.NbaVivo) window.NbaVivo.refrescar();
   }
 
   function cuotaTotal() {
@@ -572,6 +695,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = NbaUtil;
       $$('#ticket-resumen').textContent = '—';
       $$('#abrir-ticket').classList.add('vacia');
       $$('#abrir-ticket').setAttribute('aria-label', 'Mi combinada: vacía');
+      if (window.NbaApuestas) window.NbaApuestas.cerrarFormulario();
       return;
     }
     $$('#abrir-ticket').classList.remove('vacia');
@@ -602,6 +726,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = NbaUtil;
       (avs.length ? '<ul class="avisos-ticket">' + avs.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>' : '') +
       '<p class="nota">Si tu casa paga más que la cuota justa, el modelo ve valor. Pero el modelo no está validado contra resultados: desconfiá de las ventajas muy altas.</p>' +
       '<div class="acciones"><button type="button" class="btn primario" id="t-guardar">Guardar</button>' +
+      '<button type="button" class="btn secundario" id="t-registrar" aria-controls="registrar">Registrar apuesta</button>' +
       '<button type="button" class="btn" id="t-copiar">Copiar texto</button><button type="button" class="btn btn-peligro" id="t-limpiar">Vaciar</button></div>';
     var res = (c.cuota ? '@' + fC(c.cuota) + ' · ' : '') + fP(c.conj);
     $$('#ticket-resumen').textContent = res;
@@ -662,26 +787,97 @@ if (typeof module !== 'undefined' && module.exports) module.exports = NbaUtil;
       return;
     }
     cont.innerHTML = COMBOS.map(function (c, i) {
-      var uno = c.p > 0 ? Math.round(1 / c.p) : null;
-      return '<article class="comb comb-' + esc(c.id) + '" aria-labelledby="comb-t-' + i + '">' +
-        '<div class="comb-cab"><h3 class="comb-tipo" id="comb-t-' + i + '"><span class="comb-punto" aria-hidden="true"></span>' + esc(c.nombre) + '</h3><span class="comb-meta">' + c.n + ' patas · cuota ≥ ' + fC(c.T) + '</span></div>' +
-        '<div class="comb-nums"><div><b>@' + fC(c.cuota) + '</b><span>cuota total</span></div><div><b>' + fP(c.p) + '</b><span>' + (uno ? '<span class="sr-only">probabilidad: </span>1 de ' + uno : 'probabilidad') + '</span></div><div><b>' + fC(1 / c.p) + '</b><span>cuota justa</span></div></div>' +
-        '<ul class="comb-patas">' + c.legs.map(function (l) {
-          var lc = color(l.s.c);
-          return '<li><b>' + esc(l.g.j) + '</b> · Más de ' + fL(l.s.L) + ' ' + esc(lectura(l.g)) + '<small>' + esc(l.g.eq) + (l.g.loc ? ' vs ' : ' @ ') + esc(l.g.riv) + ' · ' + fP(l.s.p) + ' · @' + fC(l.cu) + ' Betano · <span class="dot ' + lc + '" aria-hidden="true"></span>' + lc + '</small></li>';
-        }).join('') + '</ul>' +
-        '<p class="nota">' + esc(c.resumen) + '</p>' +
-        '<button type="button" class="btn secundario" data-comb="' + i + '">Cargar en mi combinada</button></article>';
+      return htmlComb(c, 'comb-t-' + i, '<button type="button" class="btn secundario" data-comb="' + i + '">Cargar en mi combinada</button>');
     }).join('');
   }
-  function cargarCombo(i) {
-    var c = COMBOS[i]; if (!c) return;
-    S.ticket = c.legs.map(function (l) { return U.nuevaPata(l.g, l.s, 'mas'); });
+  /* Tarjeta de combinada (sugeridas del día y «Armá tu combinada»): c = {id, nombre, n, T, cuota, p, resumen, legs:[{g, s, cu}]}. */
+  function htmlComb(c, idTit, botones) {
+    var uno = c.p > 0 ? Math.round(1 / c.p) : null;
+    return '<article class="comb comb-' + esc(c.id) + '" aria-labelledby="' + idTit + '">' +
+      '<div class="comb-cab"><h3 class="comb-tipo" id="' + idTit + '"><span class="comb-punto" aria-hidden="true"></span>' + esc(c.nombre) + '</h3><span class="comb-meta">' + c.n + ' patas · cuota ≥ ' + fC(c.T) + '</span></div>' +
+      '<div class="comb-nums"><div><b>@' + fC(c.cuota) + '</b><span>cuota total</span></div><div><b>' + fP(c.p) + '</b><span>' + (uno ? '<span class="sr-only">probabilidad: </span>1 de ' + uno : 'probabilidad') + '</span></div><div><b>' + fC(1 / c.p) + '</b><span>cuota justa</span></div></div>' +
+      '<ul class="comb-patas">' + c.legs.map(function (l) {
+        var lc = color(l.s.c);
+        return '<li><b>' + esc(l.g.j) + '</b> · Más de ' + fL(l.s.L) + ' ' + esc(lectura(l.g)) + '<small>' + esc(l.g.eq) + (l.g.loc ? ' vs ' : ' @ ') + esc(l.g.riv) + ' · ' + fP(l.s.p) + ' · @' + fC(l.cu) + ' Betano · <span class="dot ' + lc + '" aria-hidden="true"></span>' + lc + '</small></li>';
+      }).join('') + '</ul>' +
+      (c.resumen ? '<p class="nota">' + esc(c.resumen) + '</p>' : '') +
+      '<div class="comb-acc">' + botones + '</div></article>';
+  }
+  /* Patas {g, s} → la combinada (reemplaza la actual) y abre «Mi combinada». */
+  function cargarPatas(legs, nombre) {
+    S.ticket = legs.map(function (l) { return U.nuevaPata(l.g, l.s, 'mas'); });
     S.notaTicket = '';
     cambioTicket();
-    anunciar('Cargada la combinada ' + c.nombre + ' de ' + c.n + ' patas.');
+    anunciar('Cargada la combinada ' + nombre + ' de ' + legs.length + ' patas.');
     abrirTicket();
   }
+
+  // ----------------------------------------------------------------- armá tu combinada (en Sugeridas)
+  var PROPIA = { excl: {}, res: null, n: 0 };
+  var TIPO_TXT = { pts: 'puntos', reb: 'rebotes', ast: 'asistencias', combos: 'combos', otros: 'otros' };
+  function opcionesArmador() {
+    var T = U.leerCuota($$('#a-cuota').value);
+    var pulsados = function (sel) { return Array.prototype.map.call(document.querySelectorAll(sel + ' [aria-pressed="true"]'), function (b) { return b.dataset.v; }); };
+    return { T: T, n: +$$('#a-n').value || 3, pmin: +$$('#a-pmin').value || 0.65, porJuego: +$$('#a-porjuego').value || 1,
+      colores: pulsados('#a-colores'), tipos: pulsados('#a-tipos'), evitar: !!$$('#a-evitar').checked };
+  }
+  function armar(otra) {
+    var res = $$('#armar-res'), op = opcionesArmador(), cu = $('#a-cuota');
+    if (cu) cu.setAttribute('aria-invalid', op.T ? 'false' : 'true');
+    var aviso = function (txt, extra) { PROPIA.res = null; res.innerHTML = '<div class="armar-msg" role="status" tabindex="-1">' + txt + (extra || '') + '</div>'; verResultado(); };
+    if (!op.T) return aviso('Escribí una cuota objetivo válida, por ejemplo <b>3,00</b>.');
+    if (!op.colores.length) return aviso('Elegí al menos un color (verde o amarillo).');
+    if (!op.tipos.length) return aviso('Elegí al menos un tipo de mercado.');
+    if (!otra) PROPIA.excl = {};
+    var excl = Object.assign({}, PROPIA.excl);
+    if (op.evitar) S.ticket.forEach(function (l) { excl[l.id] = true; });
+    var libres = S.grupos.filter(function (g) { return !estadoDe(g.gid); });   // sin partidos empezados, como las sugeridas
+    if (!libres.length) return aviso('Todos los partidos de hoy ya empezaron: no se puede armar una combinada nueva.');
+    var r = U.armarCombinada(libres, { T: op.T, n: op.n, pmin: op.pmin, colores: op.colores, porJuego: op.porJuego, tipos: op.tipos, excluidos: excl }, window.Sugeridas);
+    var reglas = 'probabilidad ≥ ' + fP(op.pmin) + ', ' + op.colores.join(' o ') + ', ' + op.tipos.map(function (t) { return TIPO_TXT[t]; }).join(', ') +
+      ', cuota de cada pata ≥ 1,10 y máximo ' + op.porJuego + ' por partido';
+    var otraVez = otra && Object.keys(PROPIA.excl).length ? ' <button type="button" class="btn" data-propia="reiniciar">Volver a la primera opción</button>' : '';
+    if (r.error === 'pocas') {
+      return aviso(otra && Object.keys(PROPIA.excl).length ? 'No hay otra opción sin repetir los jugadores de las anteriores (' + esc(reglas) + ').'
+        : 'No hay suficientes líneas que cumplan (' + esc(reglas) + '): alcanzan para ' + r.alcanza + ' de ' + op.n + ' patas. Probá bajar la probabilidad mínima, sumar colores o mercados, permitir más patas por partido o pedir menos patas.', otraVez);
+    }
+    if (r.error === 'cuota') {
+      return aviso('Con ' + op.n + ' patas que cumplan (' + esc(reglas) + ') la cuota más alta posible es ≈ ' + fC(r.maxCuota) + ': no llega a ' + fC(op.T) +
+        '. Probá bajar la cuota objetivo, sumar patas o bajar la probabilidad mínima.', otraVez);
+    }
+    var patas = r.legs.map(function (l) { return { id: l.g.id, eq: l.g.eq, gid: l.g.gid, m: l.g.m, lado: 'mas', p: l.s.p }; });
+    var cj = window.Correlacion.conjunta(patas);
+    PROPIA.n = otra ? PROPIA.n + 1 : 1;
+    var c = { id: 'propia', nombre: 'A tu medida' + (PROPIA.n > 1 ? ' · opción ' + PROPIA.n : ''), n: op.n, T: op.T, legs: r.legs, p: cj.conj,
+      cuota: r.legs.reduce(function (a, l) { return a * l.cu; }, 1), resumen: 'Reglas: ' + reglas + '.' };
+    r.legs.forEach(function (l) { PROPIA.excl[l.g.id] = true; });
+    PROPIA.res = c;
+    res.innerHTML = htmlComb(c, 'comb-propia-t', '<button type="button" class="btn secundario" data-propia="cargar">Cargar en mi combinada</button>' +
+      '<button type="button" class="btn" data-propia="otra">Otra opción</button>');
+    anunciar('Combinada armada: ' + op.n + ' patas, cuota ' + fC(c.cuota) + ', probabilidad ' + fP(c.p) + '.');
+    verResultado();
+  }
+  /* En el celular el resultado queda abajo del formulario: se trae a la vista. */
+  function verResultado() {
+    var r = $('#armar-res'); if (!r || !esMovil()) return;
+    try { r.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); } catch (e) { /* nada */ }
+  }
+  function enlazarArmador() {
+    $$('#armar').addEventListener('submit', function (e) { e.preventDefault(); armar(false); });
+    $$('#armar').addEventListener('click', function (e) {
+      var b = e.target.closest('[aria-pressed]'); if (!b) return;
+      b.setAttribute('aria-pressed', b.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
+    });
+    $$('#a-cuota').addEventListener('change', function (e) { var v = U.leerCuota(e.target.value); if (v) e.target.value = fC(v); });
+    $$('#armar-res').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-propia]'); if (!b) return;
+      var acc = b.dataset.propia;
+      if (acc === 'cargar' && PROPIA.res) cargarPatas(PROPIA.res.legs, PROPIA.res.nombre);
+      else if (acc === 'otra') { armar(true); enfocar($('#armar-res [data-propia="otra"]') || $('#armar-res .armar-msg')); }
+      else if (acc === 'reiniciar') armar(false);
+    });
+  }
+  function cargarCombo(i) { var c = COMBOS[i]; if (c) cargarPatas(c.legs, c.nombre); }
 
   // ----------------------------------------------------------------- método
   function metodo() {
@@ -694,13 +890,16 @@ if (typeof module !== 'undefined' && module.exports) module.exports = NbaUtil;
       '<h4>Combinadas sugeridas</h4><p><b>Segura</b> (3 y 4 patas, cuota ≥ 1,99), <b>Intermedia</b> (4 y 5 patas, cuota ≥ 5) y <b>Soñadora</b> (7 patas, cuota ≥ 20). Para cada una se resuelve un problema de mochila: elegir las patas «más de» que maximizan la probabilidad conjunta con la cuota mínima, con un jugador por pata y solo líneas con cuota publicada, modelo completo, sin jugadores dudosos y de partidos que no empezaron. La Segura usa solo líneas verdes de al menos 72%; la Intermedia, verdes y amarillas de al menos 60%; la Soñadora, de al menos 50%. Ninguna línea supera 96% porque siempre queda un riesgo que las estadísticas no ven.</p>' +
       '<h4>Combinadas</h4><p>La probabilidad conjunta usa una cópula gaussiana: patas del mismo jugador se tratan como correlacionadas y las del mismo partido con una correlación leve. Entre partidos distintos se asumen independientes. Dos patas del mismo partido se calculan de forma exacta (normal bivariada); tres o más, con una simulación de semilla fija. Una línea muy segura paga poco: la cuota total es el producto de las cuotas.</p>' +
       '<h4>Partidos empezados</h4><p>Cuando un partido ya empezó, su tarjeta y sus líneas dicen «En juego» o «Final». Sus líneas no se pueden sumar a la combinada y no entran en las sugeridas, porque las cuotas publicadas son de antes del inicio.</p>' +
-      '<h4>Límites</h4><ul><li>Las probabilidades salen de un modelo <b>sin validar contra resultados</b>: no hay cuotas históricas para comprobarlo. Cada corrida guarda una foto del día en <code>docs/data/historial/</code> para poder hacerlo más adelante.</li><li>Muestra chica: estamos a pocos partidos del inicio de temporada.</li><li>El defensa-por-posición se muestra solo como contexto: hay poca evidencia de que prediga.</li><li>Las lesiones cambian hasta minutos antes del partido. Verificá antes de apostar.</li><li>Esto es análisis estadístico, no una garantía ni consejo financiero. Apostá solo lo que puedas perder.</li></ul>';
+      '<h4>Límites</h4><ul><li>Las probabilidades recién se empiezan a <b>contrastar con resultados</b>: cada día se guarda una foto pre-partido y, cuando terminan los partidos, se corrige. Lo ves en <a href="#/resultados">Resultados y calibración</a>; con pocos días no se puede sacar ninguna conclusión.</li><li>Muestra chica: estamos a pocos partidos del inicio de temporada.</li><li>El defensa-por-posición se muestra solo como contexto: hay poca evidencia de que prediga.</li><li>Las lesiones cambian hasta minutos antes del partido. Verificá antes de apostar.</li><li>Esto es análisis estadístico, no una garantía ni consejo financiero. Apostá solo lo que puedas perder.</li></ul>';
   }
 
   // ----------------------------------------------------------------- secciones y rutas  (#/vista  ·  #/lineas?partido=GID)
-  var VISTAS = ['partidos', 'lineas', 'sugeridas', 'combinada', 'metodo'];
-  var TITULOS = { partidos: 'Partidos', lineas: 'Líneas', sugeridas: 'Sugeridas', combinada: 'Mi combinada', metodo: 'Cómo se calcula' };
-  var TITULO_ID = { partidos: 'h-partidos', lineas: 'h-lineas', sugeridas: 'h-sug', combinada: 'h-ticket', metodo: 'h-metodo' };
+  var VISTAS = ['partidos', 'lineas', 'sugeridas', 'combinada', 'mas', 'resultados', 'apuestas', 'metodo'];
+  var TITULOS = { partidos: 'Partidos', lineas: 'Líneas', sugeridas: 'Sugeridas', combinada: 'Mi combinada', mas: 'Más', resultados: 'Resultados y calibración',
+    apuestas: 'Mis apuestas', metodo: 'Cómo se calcula' };
+  var TITULO_ID = { partidos: 'h-partidos', lineas: 'h-lineas', sugeridas: 'h-sug', combinada: 'h-ticket', mas: 'h-mas', resultados: 'h-res', apuestas: 'h-apu', metodo: 'h-metodo' };
+  var PESTANA = { resultados: 'mas', apuestas: 'mas', metodo: 'mas' };       // secciones secundarias: se marca la pestaña «Más»
+  var MODULOS = ['NbaResultados', 'NbaApuestas', 'NbaVivo'];
   var MQ = window.matchMedia('(max-width: 980px)');          // mismo corte que estilos.css
   var esMovil = function () { return MQ.matches; };
   try { if ('scrollRestoration' in history) history.scrollRestoration = 'manual'; } catch (e) { /* nada */ }
@@ -744,11 +943,13 @@ if (typeof module !== 'undefined' && module.exports) module.exports = NbaUtil;
     S.vista = v; if (v !== 'combinada') S.ultimaPrincipal = v; else $$('#aviso-ticket').hidden = true;   // en la combinada se ve la nota del ticket
     document.body.setAttribute('data-seccion', v);
     document.querySelectorAll('.vista').forEach(function (el) { el.hidden = el.getAttribute('data-vista') !== v; });
+    var tab = PESTANA[v] || v;
     document.querySelectorAll('#nav-secciones a[data-vista]').forEach(function (a) {
-      if (a.getAttribute('data-vista') === v) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+      if (a.getAttribute('data-vista') === tab) a.setAttribute('aria-current', v === tab ? 'page' : 'true'); else a.removeAttribute('aria-current');
     });
     document.title = TITULOS[v] + ' · NBA Semáforo';
     preparar(v);
+    if (window.NbaVivo && S.data) window.NbaVivo.refrescar();
     window.scrollTo(0, S.scroll[v] || 0);                                   // cada pestaña conserva su scroll
     if (!op.inicial) enfocar(document.getElementById(TITULO_ID[v]));        // al cargar la página no se roba el foco
   }
@@ -759,6 +960,9 @@ if (typeof module !== 'undefined' && module.exports) module.exports = NbaUtil;
     if (v === 'lineas') { if (S.sucio.filtro) aplicarFiltros(); }           // recalcula y vuelve a la página 1
     else if (v === 'sugeridas') prepararSugeridas();
     else if (v === 'metodo' && !S.hecho.metodo) { S.hecho.metodo = true; metodo(); }
+    else if (v === 'resultados' && window.NbaResultados) window.NbaResultados.abrir();
+    else if (v === 'apuestas' && window.NbaApuestas) window.NbaApuestas.abrir();
+    else if (v === 'mas' && window.NbaApuestas) $$('#hub-apuestas-n').textContent = window.NbaApuestas.resumenCorto();
   }
 
   function abrirTicket() { if (esMovil()) ir('combinada'); else enfocar($('#h-ticket')); }
@@ -839,6 +1043,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = NbaUtil;
       if (e.target.closest('[data-cerrar-nota]')) { S.notaTicket = ''; pintarTicket(); enfocar($('#h-ticket')); return; }
       if (e.target.id === 't-limpiar') { S.ticket = []; S.notaTicket = ''; cambioTicket(); anunciar('Combinada vacía.'); enfocar($('#h-ticket')); return; }
       if (e.target.id === 't-copiar') { copiar(textoTicket(), e.target); return; }
+      if (e.target.id === 't-registrar') { if (window.NbaApuestas) window.NbaApuestas.formulario(); return; }
       if (e.target.id === 't-guardar') {
         var c = calcular(), nombre = window.prompt('Nombre de la combinada:', 'Combinada ' + (S.guardadas.length + 1));
         if (nombre === null) return;
@@ -882,6 +1087,14 @@ if (typeof module !== 'undefined' && module.exports) module.exports = NbaUtil;
       }
     });
   }
+
+  /* Lo que usan los módulos de las secciones nuevas (resultados.js, apuestas.js, vivo.js). */
+  var APP = {
+    S: S, U: U, esc: esc, fL: fL, fC: fC, fP: fP, color: color, lectura: lectura, diaMes: diaMes, hace: hace, hora: hora, LADO: LADO,
+    anunciar: anunciar, enfocar: enfocar, esMovil: esMovil, ir: ir, leer: leer, guardar: guardar, lista: lista,
+    estadoDe: estadoDe, partidoDe: partidoDe, nombreDe: nombreDe, pedirJSON: pedirJSON, cuotaTotal: cuotaTotal, badgeEstado: badgeEstado,
+    combinadaVisible: function () { return S.vista === 'combinada' || !esMovil(); }
+  };
 
   cargar();
 })(NbaUtil);

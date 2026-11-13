@@ -33,7 +33,7 @@ jobs:
         # incluye tests/test_modelo.py, tests/test_datos.py y tests/test_resultados.py
         run: |
           python3 -m unittest discover -s tests
-          SKIP_DATOS_REALES=1 node --test tests/correlacion.test.js tests/sugeridas.test.js
+          SKIP_DATOS_REALES=1 node --test tests/correlacion.test.js tests/sugeridas.test.js tests/app.test.js tests/calificar.test.js tests/vivo.test.js
       - name: Resultados y calibración
         # Califica los días anteriores (≈ 1 consulta a LudoProps por partido) y recalcula docs/data/calibracion.json.
         # Si falla, la actualización del día sigue igual.

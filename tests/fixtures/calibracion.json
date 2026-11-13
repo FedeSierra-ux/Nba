@@ -1,0 +1,45 @@
+{
+  "actualizado": "2026-11-13T09:12:00Z",
+  "dias": ["2026-11-10", "2026-11-11", "2026-11-12"],
+  "lineas": {
+    "por_color": {
+      "verde": {"n": 96, "aciertos": 66, "anuladas": 3, "p_media": 0.7123, "tasa": 0.6875},
+      "amarillo": {"n": 141, "aciertos": 82, "anuladas": 4, "p_media": 0.6011, "tasa": 0.5816},
+      "rojo": {"n": 502, "aciertos": 231, "anuladas": 11, "p_media": 0.4712, "tasa": 0.4602}
+    },
+    "por_tramo": [
+      {"desde": 0.0, "hasta": 0.5, "n": 288, "aciertos": 118, "anuladas": 6, "p_media": 0.4021, "tasa": 0.4097},
+      {"desde": 0.5, "hasta": 0.6, "n": 214, "aciertos": 117, "anuladas": 5, "p_media": 0.5512, "tasa": 0.5467},
+      {"desde": 0.6, "hasta": 0.7, "n": 151, "aciertos": 96, "anuladas": 4, "p_media": 0.6431, "tasa": 0.6358},
+      {"desde": 0.7, "hasta": 0.8, "n": 64, "aciertos": 41, "anuladas": 2, "p_media": 0.7388, "tasa": 0.6406},
+      {"desde": 0.8, "hasta": 0.9, "n": 19, "aciertos": 15, "anuladas": 1, "p_media": 0.8344, "tasa": 0.7895},
+      {"desde": 0.9, "hasta": 1.0, "n": 3, "aciertos": 3, "anuladas": 0, "p_media": 0.9233, "tasa": 1.0}
+    ],
+    "brier": {"n": 739, "modelo": 0.2312, "casa": 0.2358}
+  },
+  "escalera": {
+    "por_color": {
+      "verde": {"n": 412, "aciertos": 301, "anuladas": 12, "p_media": 0.7456, "tasa": 0.7306},
+      "amarillo": {"n": 233, "aciertos": 140, "anuladas": 7, "p_media": 0.6188, "tasa": 0.6009},
+      "rojo": {"n": 1490, "aciertos": 596, "anuladas": 40, "p_media": 0.4121, "tasa": 0.4}
+    },
+    "por_tramo": [
+      {"desde": 0.0, "hasta": 0.5, "n": 1012, "aciertos": 330, "anuladas": 28, "p_media": 0.3311, "tasa": 0.3261},
+      {"desde": 0.5, "hasta": 0.6, "n": 402, "aciertos": 221, "anuladas": 11, "p_media": 0.5498, "tasa": 0.5498},
+      {"desde": 0.6, "hasta": 0.7, "n": 333, "aciertos": 213, "anuladas": 9, "p_media": 0.6477, "tasa": 0.6396},
+      {"desde": 0.7, "hasta": 0.8, "n": 248, "aciertos": 175, "anuladas": 6, "p_media": 0.7441, "tasa": 0.7056},
+      {"desde": 0.8, "hasta": 0.9, "n": 121, "aciertos": 98, "anuladas": 4, "p_media": 0.8402, "tasa": 0.8099},
+      {"desde": 0.9, "hasta": 1.0, "n": 19, "aciertos": 17, "anuladas": 1, "p_media": 0.9188, "tasa": 0.8947}
+    ],
+    "roi": {
+      "verde": {"n": 412, "ganadas": 301, "anuladas": 12, "unidades": -9.84, "roi": -0.0239},
+      "amarillo": {"n": 233, "ganadas": 140, "anuladas": 7, "unidades": 4.47, "roi": 0.0192},
+      "rojo": {"n": 1490, "ganadas": 596, "anuladas": 40, "unidades": -88.2, "roi": -0.0592}
+    }
+  },
+  "sugeridas": {
+    "segura": {"n": 6, "ganadas": 3, "anuladas": 0, "unidades": 0.21, "roi": 0.035, "perdidas": 3, "con_anuladas": 1, "p_media": 0.4688, "tasa": 0.5},
+    "intermedia": {"n": 6, "ganadas": 1, "anuladas": 0, "unidades": 0.62, "roi": 0.1033, "perdidas": 5, "con_anuladas": 0, "p_media": 0.1612, "tasa": 0.1667},
+    "sonadora": {"n": 2, "ganadas": 0, "anuladas": 1, "unidades": -2.0, "roi": -1.0, "perdidas": 2, "con_anuladas": 0, "p_media": 0.0402, "tasa": 0.0}
+  }
+}

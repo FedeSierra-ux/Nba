@@ -1,0 +1,23 @@
+{
+  "app": "nba-semaforo",
+  "tipo": "apuestas",
+  "version": 1,
+  "exportado": "2026-11-13T10:00:00Z",
+  "apuestas": [
+    {"id": "fx-ganada", "creada": "2026-11-12T22:00:00Z", "fecha": "2026-11-12", "casa": "Betano", "monto": 1000, "cuota": 2.1, "manual": null, "legs": [
+      {"id": 9001, "j": "Marcos Ribeiro", "m": "pts", "mn": "Puntos", "per": null, "L": 18.5, "lado": "mas", "gid": "0022699001", "eq": "NYK", "riv": "BOS", "cu": 1.85},
+      {"id": 9004, "j": "Lucas Funes", "m": "pra", "mn": "Pts+Reb+Ast", "per": null, "L": 30.5, "lado": "mas", "gid": "0022699002", "eq": "DEN", "riv": "LAL", "cu": 1.14}]},
+    {"id": "fx-perdida", "creada": "2026-11-12T22:01:00Z", "fecha": "2026-11-12", "casa": "Stake", "monto": 500, "cuota": 3.4, "manual": null, "legs": [
+      {"id": 9001, "j": "Marcos Ribeiro", "m": "pts", "mn": "Puntos", "per": null, "L": 18.5, "lado": "mas", "gid": "0022699001", "eq": "NYK", "riv": "BOS", "cu": 1.85},
+      {"id": 9002, "j": "Tomás Ledesma", "m": "reb", "mn": "Rebotes", "per": null, "L": 7.5, "lado": "mas", "gid": "0022699001", "eq": "NYK", "riv": "BOS", "cu": 1.8}]},
+    {"id": "fx-anulada", "creada": "2026-11-12T22:02:00Z", "fecha": "2026-11-12", "casa": "Betano", "monto": 200, "cuota": 1.9, "manual": null, "legs": [
+      {"id": 9003, "j": "Iván Correa", "m": "ast", "mn": "Asistencias", "per": null, "L": 4.5, "lado": "mas", "gid": "0022699001", "eq": "BOS", "riv": "NYK", "cu": 1.9}]},
+    {"id": "fx-pendiente", "creada": "2026-11-12T22:03:00Z", "fecha": "2026-11-12", "casa": "Otra", "monto": 300, "cuota": 2.5, "manual": null, "legs": [
+      {"id": 9006, "j": "Nico Paz", "m": "pts", "mn": "Puntos", "per": null, "L": 15.5, "lado": "mas", "gid": "0022699003", "eq": "MIA", "riv": "CHI", "cu": 1.85},
+      {"id": 9001, "j": "Marcos Ribeiro", "m": "pts", "mn": "Puntos", "per": null, "L": 18.5, "lado": "mas", "gid": "0022699001", "eq": "NYK", "riv": "BOS", "cu": 1.35}]},
+    {"id": "fx-con-anulada", "creada": "2026-11-12T22:04:00Z", "fecha": "2026-11-12", "casa": "Stake", "monto": 100, "cuota": 2.8, "manual": null, "legs": [
+      {"id": 9001, "j": "Marcos Ribeiro", "m": "pts", "mn": "Puntos", "per": null, "L": 18.5, "lado": "mas", "gid": "0022699001", "eq": "NYK", "riv": "BOS", "cu": 1.6},
+      {"id": 9003, "j": "Iván Correa", "m": "ast", "mn": "Asistencias", "per": null, "L": 4.5, "lado": "mas", "gid": "0022699001", "eq": "BOS", "riv": "NYK", "cu": 1.75}]},
+    {"id": "fx-invalida", "fecha": "ayer", "casa": "Betano", "monto": 100, "cuota": 2, "legs": []}
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "fecha": "2026-11-12",
+  "completo": false,
+  "partidos": {
+    "0022699001": {"estado": 3, "local": "NYK", "visita": "BOS", "pts_local": 112, "pts_visita": 104, "box": true},
+    "0022699002": {"estado": 3, "local": "LAL", "visita": "DEN", "pts_local": 99, "pts_visita": 121, "box": true},
+    "0022699003": {"estado": 2, "local": "MIA", "visita": "CHI", "pts_local": 61, "pts_visita": 58}
+  },
+  "jugadores": {
+    "9001": {"min": 34.0, "pts": 24, "reb": 4, "ast": 3, "fg3m": 2, "stl": 1, "blk": 0, "tov": 2, "fgm": 9, "fga": 18, "fta": 5, "ftm": 4, "pf": 2},
+    "9002": {"min": 30.5, "pts": 9, "reb": 5, "ast": 1, "fg3m": 0, "stl": 0, "blk": 1, "tov": 1, "fgm": 4, "fga": 7, "fta": 2, "ftm": 1, "pf": 4},
+    "9003": {"min": 0, "pts": 0, "reb": 0, "ast": 0, "fg3m": 0, "stl": 0, "blk": 0, "tov": 0, "fgm": 0, "fga": 0, "fta": 0, "ftm": 0, "pf": 0},
+    "9004": {"min": 33.0, "pts": 20, "reb": 8, "ast": 5, "fg3m": 1, "stl": 2, "blk": 0, "tov": 3, "fgm": 8, "fga": 15, "fta": 4, "ftm": 3, "pf": 3},
+    "9005": {"min": 25.0, "pts": 10, "reb": 3, "ast": 2, "fg3m": 2, "stl": 0, "blk": 0, "tov": 1, "fgm": 4, "fga": 11, "fta": 0, "ftm": 0, "pf": 1},
+    "9008": {"min": 22.0, "pts": 6, "reb": 9, "ast": 1, "fg3m": 0, "stl": 0, "blk": 2, "tov": 0, "fgm": 3, "fga": 5, "fta": 0, "ftm": 0, "pf": 2}
+  }
+}
